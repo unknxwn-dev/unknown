@@ -18,3 +18,9 @@ Pre-implementation research. Start here:
   rules, feeless spam economics, risk ranking, MVP plan, and open research questions.
 - [`docs/plan.md`](docs/plan.md) — phased project plan: gates with numeric go/no-go criteria,
   workstreams, KPIs, team shape, risk-to-gate mapping, and immediate next actions.
+- [`docs/engineering-plan.md`](docs/engineering-plan.md) — agent-ready work breakdown: which
+  repositories provide base code and in what mode (dependency / embed / design-only), pinned
+  technical decisions, workspace layout, frozen interface contracts, wire formats, the spend
+  circuit statement, 18 work packages with acceptance tests, and milestone→gate mapping.
+- [`specs/emission.md`](specs/emission.md) — issuance schedule, reward distribution, and the
+  emission governance model (decrease-easy / increase-hard, zero-emission as earned end state).
