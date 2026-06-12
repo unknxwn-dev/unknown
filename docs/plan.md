@@ -48,10 +48,15 @@ with the team in §5; mainnet realistically year 3.
 - `specs/threat-model.md` — adversaries: spammer (state-growth attacker), deanonymizer
   (ledger + network), counterfeiter (circuit/soundness), quantum archivist
   (harvest-now-decrypt-later), byzantine validators.
+- `specs/emission.md` — issuance schedule and reward-distribution rule (v0 drafted: fixed
+  per-checkpoint emission `E(h)` decaying to a tail, stake/participation-weighted base stream,
+  capped quota-backed inclusion bonus; per-tx minting rejected — mint-farming analysis inside).
 - **Benchmark harness** (`bench/`): the candidate 2-in/2-out spend relation implemented in
   Plonky3, Stwo, and Miden VM; measured on x86 laptop, ARM laptop, mid-range Android.
 - **Economics simulation** (`sim/`): spam attacker budget vs. quota/PoW parameters; state-growth
-  curves at 10/100/1,000 TPS; emission/dilution model for validator funding.
+  curves at 10/100/1,000 TPS; emission/dilution model for validator funding, including
+  mint-farming/ledger-stuffing profitability across `specs/emission.md` parameters
+  (calibrates `E_0`, half-life `H`, tail `E_tail`, inclusion-bonus cap `β`).
 
 **Gate A (go/no-go):**
 
@@ -101,8 +106,10 @@ spec — the privacy/feeless pillars don't depend on the DAG; speed claims get t
 - Shielded **quota pool**: stake-locked quota notes; per-epoch rate nullifiers
   PRF(quota_key, epoch, k); RLN-style slashing for reuse; sponsorship flow (transferable small
   quota notes); PoW fallback lane capped at a fixed fraction of capacity.
-- Emission: shielded coinbase with **public amounts** to validators; staking + delegation;
-  supply-audit endpoint (Σ mints − Σ burns).
+- Emission per `specs/emission.md`: per-checkpoint `E(h)` with smooth decay to tail; shielded
+  coinbase with **public amounts** to validators; stake/participation base stream + capped
+  quota-backed inclusion bonus (launchable at β = 0); staking + delegation; supply-audit
+  endpoint (Σ mints − Σ burns).
 - Per-vertex/per-checkpoint **proof aggregation** (recursive folding) and proof pruning after
   finality; state-weight accounting per quota.
 - **Spam game days:** red team funded to break it with the economics sim's worst-case budgets.

@@ -284,7 +284,52 @@ delivery is the norm).
 - A useful synergy: with no fee market and encrypted content there is **no MEV**, so validator
   revenue is fully protocol-defined — no hidden-incentive drift toward order manipulation.
 
-### 7.5 Plan B worth keeping in the back pocket
+### 7.5 Usage-coupled emission ("mint a reward per transaction, decaying with height")
+
+An attractive-sounding refinement: each transaction mints a small reward to the node that
+processes it, with the per-tx mint decaying on a schedule — users stay feeless, node operators
+get paid in proportion to work, inflation is bounded like a halving schedule.
+
+The mechanics are easy in this design (checkpoint sequence number is the "block height" analogue;
+mint amounts are public for supply audit; reward notes are shielded with public amounts). The
+economics are the trap:
+
+- **Mint farming.** If including a transaction mints new money, the includer profits from
+  *creating* transactions. A validator can stuff the ledger with self-dealing txs (or split the
+  mint with colluding users as a kickback) at near-zero marginal cost. The profit condition is
+  `mint_per_tx > attacker's marginal cost per tx`; for a validator self-including, that cost is
+  only the anti-spam cost (PoW joules / quota opportunity), which the protocol wants to keep low
+  for honest users. Either the mint is large enough to fund nodes — and stuffing is profitable —
+  or it is below spam cost — and it underfunds nodes. There is no comfortable middle that stays
+  stable as hardware and token price move.
+- **Endogenous money supply.** Total issuance becomes a function of traffic, i.e.
+  attacker-influenceable. Monetary policy should not have an adversarial input.
+- **Guaranteed-maximal state growth.** Stuffing converts emission into *permanent* ledger bytes
+  (nullifiers + commitments are unprunable) — the worst possible resource to subsidize. This is
+  why no major chain mints per-transaction; Bitcoin's subsidy is deliberately per-*block*,
+  independent of tx count.
+
+**The fix that keeps the intent:** fix total emission per checkpoint and let transaction
+inclusion affect only its *split* between validators:
+
+- `E(h) = E_tail + (E_0 − E_tail) · 2^(−h/H)` — smooth decay by checkpoint height `h` with
+  half-life `H`, to a **tail floor, not zero** (a feeless chain has no fee market to take over
+  the security budget; decay-to-zero is how it dies).
+- Distribute most of `E(h)` (≥ 80 %) by stake × consensus participation.
+- Optionally distribute a small capped share (≤ 20 %) as an **inclusion bonus** weighted by the
+  quota-backed transactions each validator's committed vertices carried (first-commit
+  attribution). Because the total is fixed, stuffing can only redistribute a bounded pool among
+  validators while paying real quota costs — it cannot inflate supply, and the junk-traffic
+  equilibrium is bounded by the bonus pool size.
+- Smooth decay beats step halvings: no revenue cliffs, no validator-exit shocks at the steps.
+
+Note also that "node provider" can only mean *validator* at the protocol level — RPC/wallet
+infrastructure is not protocol-visible. Those operators are reached through delegation (run or
+back a validator) or treasury grants, not through the emission rule.
+
+Full mechanism draft: [`../specs/emission.md`](../specs/emission.md).
+
+### 7.6 Plan B worth keeping in the back pocket
 
 A **uniform, protocol-fixed, in-circuit burn**: the circuit enforces Σin = Σout + F with constant
 F, invisibly (no fee field, no fee market, no fee fingerprinting — every tx still looks identical).
@@ -337,7 +382,7 @@ Mandatory privacy must not mean unauditable supply:
    (not zkVM), Poseidon2/Monolith arithmetization, benchmark before any other work.
 2. **Feeless spam & state-growth economics.** The strongest sustained adversarial pressure;
    Nano 2021 and IOTA's retreat from feelessness are the precedents. *Mitigations:* state-weight
-   quotas (RLN), PoW fallback lane, explicit attacker-budget simulations, Plan-B burn (§7.5).
+   quotas (RLN), PoW fallback lane, explicit attacker-budget simulations, Plan-B burn (§7.6).
 3. **Anchor/finality correctness on the DAG.** A reorged anchor is catastrophic (dead proofs,
    ambiguous nullifier set). *Mitigations:* deterministic-finality DAG-BFT only; the
    anchor-window spec is the first document to write and model-check.
