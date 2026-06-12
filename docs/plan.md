@@ -15,6 +15,9 @@
 4. **Uniformity is a feature.** Every transaction has identical shape, size class, and anti-spam
    difficulty. Any feature that breaks uniformity needs an explicit privacy review.
 5. **Specs before code; adversaries before features.** Each component ships with its threat model.
+6. **Feeless for users from day one; never unpaid security from day one.** Nano-style
+   third-party-funded infrastructure is a destination state, not a genesis security model
+   (`specs/emission.md`).
 
 ---
 

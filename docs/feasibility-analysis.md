@@ -502,3 +502,6 @@ content at the seams.**
 - LaBRADOR (CRYPTO 2023) and Greyhound (CRYPTO 2024) lattice proof systems; zksecurity.xyz
   explainer *Proofs on a Leash*.
 - Monero FCMP++ design materials; Nano spam post-mortems (2021); IOTA Rebased (2025) economics.
+- *Monero's Decentralized P2P Exchanges: Functionality, Adoption, and Privacy Risks*
+  (arXiv:2505.02392) — documents privacy-coin liquidity migrating to P2P/DEX venues under
+  regulatory delisting pressure (supports the DEX-first liquidity mitigation in §10, risk 9).

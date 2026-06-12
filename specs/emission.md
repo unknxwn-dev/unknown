@@ -2,6 +2,25 @@
 
 *Status: draft for discussion. Companion analysis: [`../docs/feasibility-analysis.md`](../docs/feasibility-analysis.md) §7.5.*
 
+## Thesis
+
+**Feeless for users from day one; never unpaid security from day one.**
+
+The protocol launches with a minimal security emission because validator security must exist
+before third-party infrastructure incentives exist. The long-term goal is to reduce emission as
+the network proves that wallets, merchants, RPC providers, privacy organizations, and other
+beneficiaries independently operate reliable infrastructure. Zero emission is permitted as an end
+state — but only after measurable validator-independence, geographic-diversity,
+capacity-headroom, and attack-resilience thresholds are met. The network must be *capable* of
+surviving on Nano-style external incentives without ever *depending* on them at launch.
+
+**Scope note:** emission funds validator security only — it is not the feeless design's binding
+constraint. That constraint is anti-spam: spam attacks **permanent private state**, not just
+bandwidth, and Nano's balance-bucket prioritization does not port (it requires public balances).
+The replacement is native to the shielded system — private quota notes, epoch nullifiers,
+anonymous rate limits, state-weight pricing, a capped fallback PoW lane — specified in the
+feasibility analysis §7.2–7.3 and the forthcoming anti-spam spec.
+
 ## 1. Goals
 
 1. Users pay no transaction fees, ever.
@@ -154,7 +173,15 @@ delegated twice. This machinery is needed for §4's base stream anyway; it is em
 **What zero-emission buys:** genuinely fixed supply (strong monetary story), zero dilution, no
 "who gets the emission" governance surface, simpler spec.
 
-**Decision: treat the Nano model as a *destination*, not a starting point.**
+**Decision: treat the Nano model as a *destination*, not a starting point.** Core design
+principle: *Nano-style zero-reward infrastructure is a destination state, not a genesis security
+model.*
+
+```
+Phase 1: bootstrap security with protocol emission (genesis schedule E(h))
+Phase 2: reduce emission as adoption-funded infrastructure demonstrably grows
+Phase 3: optional zero-emission end state, once validator independence is proven
+```
 
 - Genesis with the small decaying-to-tail emission of §3 — security must be bought while the
   ecosystem that could volunteer it does not yet exist.
@@ -163,13 +190,16 @@ delegated twice. This machinery is needed for §4's base stream anyway; it is em
   already-planned proof pruning after finality, per-checkpoint proof aggregation, and
   prunable/out-of-band ciphertexts (at modest real-world load, ~tens of TPS, permanent state is
   ~100 GB/year — volunteer territory *only if* ciphertext pruning is real).
-- Make emission a **one-way governance ratchet: reducible, never increasable** above the genesis
-  schedule `E(h)`. If, at maturity, third-party incentives demonstrably cover validator costs
-  (observable: validator-set size, stake distribution, and infra quality at progressively lower
-  `E_tail`), governance can step the tail toward zero and the network graduates into the Nano
-  model with the ecosystem already in place.
-- Honest caveat on the ratchet: ratcheting to zero permanently surrenders the crisis lever —
-  treat the last step (tail → 0) as constitutionally harder than the steps before it.
+- **Governance rule — decrease-easy, increase-hard.** Under normal governance, emission
+  parameters can only decrease. An emergency increase requires a separate constitutional
+  process: a long activation delay, a stake supermajority, a published public security report
+  justifying the increase, an automatic sunset clause (the increase reverts unless re-approved),
+  and a hard cap — **the genesis schedule `E(h)` remains an absolute ceiling forever**, so the
+  maximum-possible-supply curve is known from genesis regardless of any emergency. This keeps
+  monetary credibility (max supply fixed at genesis) without the self-imposed death of a network
+  that gets attacked before its volunteer ecosystem matures.
+- Phase 3 (tail → 0) is reachable only through the measurable thresholds in §10 — it is a
+  graduation the network earns, not a promise it starts with.
 
 ## 8. Out of scope for the emission rule
 
@@ -209,17 +239,30 @@ real traffic is minimal, so the bonus would differentiate almost nothing while m
 incentive to fake traffic); and the asymmetry favors starting off — adding a reward stream later
 is an upgrade, removing one later is a fight with whoever profits from it.
 
-**Resolved — emission governance: one-way downward ratchet** (see §7). The genesis schedule
-`E(h)` is a ceiling that can never be raised; governance may reduce parameters (ultimately the
-tail) if and only if third-party incentive coverage is demonstrated at each step. The final step
-(tail → 0, full Nano-model graduation) permanently surrenders the crisis lever and should carry a
-higher constitutional bar than earlier reductions.
+**Resolved — emission governance: decrease-easy, increase-hard** (see §7). The genesis schedule
+`E(h)` is an absolute ceiling that can never be raised. Under normal governance, parameters may
+only decrease, and only when third-party incentive coverage is demonstrated at each step.
+Emergency restoration (back up toward, never above, the genesis ceiling) requires the
+constitutional process of §7: long delay, stake supermajority, public security report, automatic
+sunset, hard cap. Phase-3 graduation (tail → 0) requires the network to have met **measurable
+thresholds** across four categories before the step is even votable:
+
+- **validator independence** — e.g., no single operator, organization, or hosting provider above
+  a fixed share of voting weight; multiple independent client implementations in use;
+- **geographic / jurisdictional diversity** — validator distribution across regions and legal
+  regimes above defined minimums;
+- **capacity headroom** — demonstrated sustained operation at a multiple of observed peak load
+  in public load tests, funded entirely by the then-current (reduced) emission;
+- **attack resilience** — a public game-day record showing spam and partition scenarios survived
+  at the reduced emission level.
 
 Open:
 
 1. Participation measurement: vertices committed vs. attestation completeness — which is harder
    to game at the margin?
 2. Interaction with slashing: are emission shares forfeited for the epoch of an offense?
-3. Concrete "third-party coverage demonstrated" metrics for ratchet steps: validator-set size and
-   independence, stake distribution, infra quality at reduced `E_tail` — define measurable
-   thresholds with the economics simulation.
+3. Turn the four threshold categories above into numeric values (weights, region counts, load
+   multiples, game-day pass criteria) with the economics simulation — thresholds must be fixed
+   *before* any reduction step, not negotiated during one.
+4. Emergency-process parameters: activation delay length, supermajority fraction, sunset
+   duration — and who may convene it (validator quorum? token-holder petition?).
