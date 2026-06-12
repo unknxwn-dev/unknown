@@ -57,9 +57,9 @@ E(h) = B(h) + I(h)        with  I(h) ≤ β · E(h),   β ≤ 0.2  (TBD)
 produced (vertices/attestations committed in the window). This is the security payment; it does
 not depend on transaction content or count.
 
-**Inclusion bonus `I(h)` (≤ 20 %, optional — may launch with β = 0):** divided among validators
-pro-rata to the number of **quota-backed** transactions first included in each validator's
-committed vertices at height `h`.
+**Inclusion bonus `I(h)` (≤ 20 %; β = 0 at genesis, activation criteria in §9):** divided among
+validators pro-rata to the number of **quota-backed** transactions first included in each
+validator's committed vertices at height `h`.
 
 - *Attribution:* a transaction counts once, for the validator whose committed vertex first
   contains it in commit order (deterministic under BFT total order; duplicates ignored).
@@ -125,11 +125,29 @@ even that margin is abused, set `β = 0` and the rule degrades cleanly to pure b
 | `β` | inclusion-bonus cap | largest share for which simulated stuffing stays unprofitable / immaterial |
 | checkpoint cadence | sets `E_0` granularity | from consensus measurements (plan Gate C) |
 
-## 9. Open questions
+## 9. Decisions and open questions
 
-1. Should `β > 0` at genesis, or introduced later once quota markets have observable prices?
-2. Participation measurement: vertices committed vs. attestation completeness — which is harder
+**Resolved — inclusion bonus at genesis: `β = 0`.** Launch with pure base emission; activate the
+bonus by parameter change only when all of the following hold:
+
+- (a) quota markets have enough observed price history to calibrate the stuffing-profitability
+  bound (the safety condition `bonus share obtainable < quota cost paid` is uncheckable before
+  quota prices exist);
+- (b) game-days replaying real traffic show stuffing unprofitable at the proposed `β` with a
+  comfortable (≥ 5×) margin;
+- (c) activation requires no circuit or note-format change (a design constraint on the
+  implementation: the bonus is checkpoint-level accounting only).
+
+Rationale: a young network is most stuffable exactly when it is least defended and its token
+price is most volatile; early validators don't need usage-coupling (`E(h)` is at its maximum and
+real traffic is minimal, so the bonus would differentiate almost nothing while maximizing the
+incentive to fake traffic); and the asymmetry favors starting off — adding a reward stream later
+is an upgrade, removing one later is a fight with whoever profits from it.
+
+Open:
+
+1. Participation measurement: vertices committed vs. attestation completeness — which is harder
    to game at the margin?
-3. Interaction with slashing: are emission shares forfeited for the epoch of an offense?
-4. Should the tail be revisitable by governance, or constitutionally fixed? (Predictability vs.
+2. Interaction with slashing: are emission shares forfeited for the epoch of an offense?
+3. Should the tail be revisitable by governance, or constitutionally fixed? (Predictability vs.
    adaptability; Monero's tail emission is fixed-by-norm.)
