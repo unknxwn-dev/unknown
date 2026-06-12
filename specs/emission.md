@@ -57,7 +57,7 @@ E(h) = B(h) + I(h)        with  I(h) ≤ β · E(h),   β ≤ 0.2  (TBD)
 produced (vertices/attestations committed in the window). This is the security payment; it does
 not depend on transaction content or count.
 
-**Inclusion bonus `I(h)` (≤ 20 %; β = 0 at genesis, activation criteria in §9):** divided among
+**Inclusion bonus `I(h)` (≤ 20 %; β = 0 at genesis, activation criteria in §10):** divided among
 validators pro-rata to the number of **quota-backed** transactions first included in each
 validator's committed vertices at height `h`.
 
@@ -106,7 +106,72 @@ even that margin is abused, set `β = 0` and the rule degrades cleanly to pure b
 - **Supply audit invariant:** total supply at height `h` = `Σ_{k ≤ h} E(k)` − Σ public burns.
   Anyone can verify it from headers alone.
 
-## 7. Out of scope for the emission rule
+## 7. Alternative model considered: zero emission, third-party incentives only (Nano model)
+
+The fully feeless *and* rewardless alternative: no issuance to anyone; nodes and validators are
+run by parties whose incentive is the network's existence — merchants and payment processors who
+want free private payments, wallet vendors who need infrastructure for their users, privacy
+organizations, and individuals. Nano has operated this way since 2015 and is the existence proof.
+Bitcoin and Monero *full nodes* (non-mining) already work this way everywhere.
+
+**The useful distinction: full nodes vs. consensus validators.** Volunteer-run full nodes are a
+solved problem and a design *requirement* regardless of emission policy (see cost engineering
+below). The contested question is only whether the 2f+1 BFT **validators** — who must lock keys,
+stay online, and carry the safety of finality — can be volunteer-run.
+
+**Why it is more fragile for this chain than for Nano:**
+
+1. **Bootstrapping inversion.** Third-party incentives scale with adoption, but security is
+   needed *before* adoption — at genesis there are no merchants, processors, or wallet vendors
+   with skin in the game yet. Nano bootstrapped in a 2015-era environment with trivial node
+   costs; that path is not reproducible for a PQ-shielded BFT chain in 2026.
+2. **Higher structural costs.** Verifying 50–200 KB STARK proofs, storing ML-KEM ciphertexts,
+   and running ML-DSA-signed BFT is 10–100× Nano's per-tx cost. Volunteer models work when
+   costs are trivial; if zero-emission is ever the goal, "node cheapness" becomes a protocol
+   KPI, not an optimization (see below).
+3. **The most reliable third-party operator class is structurally absent.** In Nano's model,
+   exchanges are anchor representatives. Mandatory-privacy assets face exchange delisting
+   pressure (Monero precedent) — the strongest pillar of the third-party model is exactly the
+   party least likely to participate here.
+4. **The adversary model is wrong for costless security.** A mandatory-privacy chain invites
+   state-level adversaries who are indifferent to token price. Nano's security argument
+   ("an attacker with that much weight destroys the value of their own holdings") is an
+   economic-rationality argument; it has no force against sabotage- or censorship-motivated
+   attackers. Bonded, slashed, *paid* validators raise the capital cost of acquiring attack
+   weight; costless delegated weight (no locking, no slashing, no yield) is cheapest to capture
+   precisely for the adversaries this chain should worry about most.
+5. **Capacity under attack.** Unpaid infrastructure is provisioned at minimum viable capacity
+   and upgraded slowly — Nano's 2021 spam incident degraded the network for weeks partly for
+   this reason. A revenue stream is also a crisis-response lever.
+
+**Mandatory-privacy-specific wrinkles** (apply to any delegated-weight scheme here, paid or not):
+Nano-style voting weight is *public balance delegation* — a privacy leak this chain cannot have.
+Delegation must be private: shielded delegation notes whose per-validator *aggregate* weight is
+public while individual delegations stay hidden (Penumbra's private-staking design is the
+precedent), with epoch-scoped delegation nullifiers preventing the same hidden value from being
+delegated twice. This machinery is needed for §4's base stream anyway; it is emission-independent.
+
+**What zero-emission buys:** genuinely fixed supply (strong monetary story), zero dilution, no
+"who gets the emission" governance surface, simpler spec.
+
+**Decision: treat the Nano model as a *destination*, not a starting point.**
+
+- Genesis with the small decaying-to-tail emission of §3 — security must be bought while the
+  ecosystem that could volunteer it does not yet exist.
+- Engineer node costs to volunteer levels as a protocol KPI from day one: full node on a
+  ~$20/month VPS, validator on a ~$300/month server at design-load TPS. This requires the
+  already-planned proof pruning after finality, per-checkpoint proof aggregation, and
+  prunable/out-of-band ciphertexts (at modest real-world load, ~tens of TPS, permanent state is
+  ~100 GB/year — volunteer territory *only if* ciphertext pruning is real).
+- Make emission a **one-way governance ratchet: reducible, never increasable** above the genesis
+  schedule `E(h)`. If, at maturity, third-party incentives demonstrably cover validator costs
+  (observable: validator-set size, stake distribution, and infra quality at progressively lower
+  `E_tail`), governance can step the tail toward zero and the network graduates into the Nano
+  model with the ecosystem already in place.
+- Honest caveat on the ratchet: ratcheting to zero permanently surrenders the crisis lever —
+  treat the last step (tail → 0) as constitutionally harder than the steps before it.
+
+## 8. Out of scope for the emission rule
 
 - **RPC / wallet-infrastructure operators** are not protocol-visible and cannot be paid by this
   rule. Paths for them: run or back a validator (delegation), or treasury grants if a treasury
@@ -115,7 +180,7 @@ even that margin is abused, set `β = 0` and the rule degrades cleanly to pure b
 - **Delegator reward splitting** (validator commission) — epoch-level accounting layered on the
   base stream; spec'd with staking.
 
-## 8. Parameters to fix (with the economics simulation)
+## 9. Parameters to fix (with the economics simulation)
 
 | Parameter | Meaning | Calibration question |
 |---|---|---|
@@ -125,7 +190,7 @@ even that margin is abused, set `β = 0` and the rule degrades cleanly to pure b
 | `β` | inclusion-bonus cap | largest share for which simulated stuffing stays unprofitable / immaterial |
 | checkpoint cadence | sets `E_0` granularity | from consensus measurements (plan Gate C) |
 
-## 9. Decisions and open questions
+## 10. Decisions and open questions
 
 **Resolved — inclusion bonus at genesis: `β = 0`.** Launch with pure base emission; activate the
 bonus by parameter change only when all of the following hold:
@@ -144,10 +209,17 @@ real traffic is minimal, so the bonus would differentiate almost nothing while m
 incentive to fake traffic); and the asymmetry favors starting off — adding a reward stream later
 is an upgrade, removing one later is a fight with whoever profits from it.
 
+**Resolved — emission governance: one-way downward ratchet** (see §7). The genesis schedule
+`E(h)` is a ceiling that can never be raised; governance may reduce parameters (ultimately the
+tail) if and only if third-party incentive coverage is demonstrated at each step. The final step
+(tail → 0, full Nano-model graduation) permanently surrenders the crisis lever and should carry a
+higher constitutional bar than earlier reductions.
+
 Open:
 
 1. Participation measurement: vertices committed vs. attestation completeness — which is harder
    to game at the margin?
 2. Interaction with slashing: are emission shares forfeited for the epoch of an offense?
-3. Should the tail be revisitable by governance, or constitutionally fixed? (Predictability vs.
-   adaptability; Monero's tail emission is fixed-by-norm.)
+3. Concrete "third-party coverage demonstrated" metrics for ratchet steps: validator-set size and
+   independence, stake distribution, infra quality at reduced `E_tail` — define measurable
+   thresholds with the economics simulation.
