@@ -1,0 +1,17 @@
+[package]
+name = "unknown-encryption"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+unknown-interfaces.workspace = true
+unknown-primitives.workspace = true
+unknown-keys.workspace = true
+unknown-notes.workspace = true
+x25519-dalek.workspace = true
+chacha20poly1305.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

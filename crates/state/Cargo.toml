@@ -1,0 +1,22 @@
+[package]
+name = "unknown-state"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+unknown-interfaces.workspace = true
+unknown-primitives.workspace = true
+unknown-notes.workspace = true
+unknown-tree.workspace = true
+unknown-tx.workspace = true
+unknown-emission.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+unknown-antispam-pow.workspace = true
+unknown-encryption.workspace = true
+unknown-prover-dev.workspace = true
+
+[lints]
+workspace = true

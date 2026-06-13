@@ -1,0 +1,15 @@
+[package]
+name = "unknown-tree"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+unknown-interfaces.workspace = true
+unknown-primitives.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true

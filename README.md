@@ -11,7 +11,22 @@ cryptocurrency that combines:
 
 ## Status
 
-Pre-implementation research. Start here:
+**Phase 1 prototype runs.** A complete shielded-payment pipeline over a single
+sequencer is implemented in Rust under `crates/`, with 44 passing tests and an
+end-to-end devnet demo:
+
+```sh
+cargo test --all                  # all green
+cargo run --bin unknown-devnet    # genesis → private transfer → chained spend
+```
+
+See [`docs/implementation-status.md`](docs/implementation-status.md) for the
+crate-by-crate map against the engineering plan, and what is intentionally
+deferred (the STARK circuit, DAG-BFT consensus, persistence/P2P backends).
+
+## Design documents
+
+Start here:
 
 - [`docs/feasibility-analysis.md`](docs/feasibility-analysis.md) — full architecture feasibility
   analysis: prior art, DAG/shielded-note compatibility, cryptographic stack, post-quantum design
@@ -24,3 +39,5 @@ Pre-implementation research. Start here:
   circuit statement, 18 work packages with acceptance tests, and milestone→gate mapping.
 - [`specs/emission.md`](specs/emission.md) — issuance schedule, reward distribution, and the
   emission governance model (decrease-easy / increase-hard, zero-emission as earned end state).
+- [`docs/implementation-status.md`](docs/implementation-status.md) — what the `crates/` prototype
+  builds today, mapped to engineering-plan work packages.

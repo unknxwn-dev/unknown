@@ -1,0 +1,11 @@
+[package]
+name = "unknown-antispam-pow"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+unknown-primitives.workspace = true
+
+[lints]
+workspace = true

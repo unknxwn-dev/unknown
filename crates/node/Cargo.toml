@@ -1,0 +1,26 @@
+[package]
+name = "unknown-node"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+unknown-interfaces.workspace = true
+unknown-primitives.workspace = true
+unknown-keys.workspace = true
+unknown-notes.workspace = true
+unknown-tree.workspace = true
+unknown-encryption.workspace = true
+unknown-tx.workspace = true
+unknown-prover-dev.workspace = true
+unknown-state.workspace = true
+unknown-wallet.workspace = true
+unknown-emission.workspace = true
+unknown-antispam-pow.workspace = true
+
+[[bin]]
+name = "unknown-devnet"
+path = "src/main.rs"
+
+[lints]
+workspace = true

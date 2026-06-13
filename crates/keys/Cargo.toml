@@ -1,0 +1,17 @@
+[package]
+name = "unknown-keys"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+unknown-interfaces.workspace = true
+unknown-primitives.workspace = true
+zeroize.workspace = true
+ml-kem.workspace = true
+x25519-dalek.workspace = true
+hex.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

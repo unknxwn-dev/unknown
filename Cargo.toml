@@ -1,0 +1,51 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/interfaces",
+    "crates/primitives",
+    "crates/keys",
+    "crates/notes",
+    "crates/tree",
+    "crates/encryption",
+    "crates/antispam-pow",
+    "crates/emission",
+    "crates/tx",
+    "crates/prover-dev",
+    "crates/state",
+    "crates/wallet",
+    "crates/node",
+]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+unknown-interfaces = { path = "crates/interfaces" }
+unknown-primitives = { path = "crates/primitives" }
+unknown-keys = { path = "crates/keys" }
+unknown-notes = { path = "crates/notes" }
+unknown-tree = { path = "crates/tree" }
+unknown-encryption = { path = "crates/encryption" }
+unknown-antispam-pow = { path = "crates/antispam-pow" }
+unknown-emission = { path = "crates/emission" }
+unknown-tx = { path = "crates/tx" }
+unknown-prover-dev = { path = "crates/prover-dev" }
+unknown-state = { path = "crates/state" }
+unknown-wallet = { path = "crates/wallet" }
+
+blake3 = "1.8"
+zeroize = { version = "1.9", features = ["derive"] }
+ml-kem = "0.3"
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+chacha20poly1305 = "0.10"
+bech32 = "0.11"
+rand_core = "0.9"
+rand_chacha = "0.9"
+thiserror = "2"
+hex = "0.4"
+proptest = "1"
+
+[workspace.lints.rust]
+unsafe_code = "deny"

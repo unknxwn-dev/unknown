@@ -1,0 +1,18 @@
+[package]
+name = "unknown-tx"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+unknown-interfaces.workspace = true
+unknown-primitives.workspace = true
+unknown-encryption.workspace = true
+unknown-antispam-pow.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+unknown-prover-dev.workspace = true
+
+[lints]
+workspace = true
