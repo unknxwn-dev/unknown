@@ -9,10 +9,16 @@ A complete **shielded-payment pipeline over a single sequencer** (engineering
 plan Phase 1) compiles, is tested, and runs end to end:
 
 ```
-cargo test --all          # 44 tests, all passing
+cargo test --all          # 53 tests, all passing
 cargo run --bin unknown-devnet   # full lifecycle demo
 cargo clippy --all-targets       # clean (warnings denied)
+cargo run --release -p unknown-circuit-spend --bin gate-a-bench   # Gate-A KPIs
 ```
+
+The single-sequencer pipeline still runs on the dev prover. Alongside it, a
+**real Plonky3 FRI STARK** (`circuit-spend`, decisions D1/D2/D3) now proves the
+spend statement's Poseidon2 workload and its arithmetic (balance/range/dummy)
+constraints, and emits the Gate-A KPI report ([`gate-a-report.md`](gate-a-report.md)).
 
 The devnet demo performs a genesis funding, a private transfer Alice→Bob, a
 checkpoint with validator reward minting, wallet scanning by trial-decryption,
@@ -31,7 +37,8 @@ recipients exist only inside the wallets, and the public supply audit
 | `notes` | WP3 | ✅ | Note/commitment/nullifier, dummy notes, rho derivation, binding tests |
 | `tree` | WP4 | ✅ (in-memory) | Append-only depth-32 Merkle tree, anchors + validity window, proptests. RocksDB backend pending |
 | `encryption` | WP5 | ✅ | 1273-byte hybrid ciphertexts, trial decryption + batch scan, tamper tests |
-| `prover-dev` | WP6 | ⚠ dev stand-in | Native spend-statement checker (C1–C9) = executable circuit spec. **STARK prover is the next major piece**; `check_spend_statement` is what it must enforce |
+| `prover-dev` | WP6 | ⚠ dev stand-in | Native spend-statement checker (C1–C9) = executable circuit spec; `check_spend_statement` is what the real circuit must enforce |
+| `circuit-spend` | WP6b | 🔶 partial (real STARK) | Plonky3 FRI STARK over BabyBear + Poseidon2 (D1/D2/D3): sound balance/range/dummy AIR (C4/C6/C7) + the spend statement's Poseidon2 permutation workload + Gate-A KPI harness. **Next:** fuse them, binding hashes → public nullifiers/commitments and the Merkle path to the anchor (C1/C2/C5) |
 | `tx` | WP9 | ✅ | `TxV1` fixed-layout codec, binding digest, malleability + uniformity tests, stateless validation |
 | `state` | WP10 | ✅ (in-memory) | Checkpoint state machine, nullifier set, reward minting, supply audit, deterministic-replay test |
 | `emission` | WP15 | ✅ | Float-free `E(h)` decay-to-tail schedule, weight-proportional distribution, β=0 |
@@ -43,11 +50,14 @@ recipients exist only inside the wallets, and the public supply audit
 
 These are sequenced behind gates in the engineering plan, not overlooked:
 
-- **STARK spend circuit (WP6b)** — the dev prover is honest about being
-  insecure (a tag over public inputs, see its module docs). Replacing it is
-  Gate-A work and the single largest remaining task. The interface
-  (`SpendVerifier`) and the constraint spec (`check_spend_statement`) are
-  already frozen, so the swap is localized.
+- **Fused STARK spend circuit (WP6b)** — `circuit-spend` now has the real
+  pieces: the proof-system foundation, a sound arithmetic AIR (C4/C6/C7), the
+  in-circuit Poseidon2 workload, and the Gate-A benchmark. What remains is to
+  *fuse* them into one AIR that binds the proven hashes to the public
+  nullifiers/commitments (C2/C5), checks ownership (C3), and verifies the
+  depth-32 Merkle path to the anchor root (C1) — at which point it can replace
+  the dev verifier behind the frozen `SpendVerifier`. The constraint spec
+  (`check_spend_statement`) is what it must match.
 - **DAG-BFT consensus (WP11)** — the state machine already consumes a *total
   order* of transactions, which is exactly what AlephBFT/Mysticeti produce. The
   single sequencer is a stand-in for that ordering service.
@@ -72,8 +82,12 @@ These are sequenced behind gates in the engineering plan, not overlooked:
 
 ## Next actions
 
-1. Stand up the Plonky3/Stwo benchmark of `check_spend_statement` as a circuit
-   (Gate A KPIs: phone prove time, proof size, verify throughput).
-2. Swap the in-memory tree/state for RocksDB-backed implementations behind the
-   existing traits.
-3. Integrate an AlephBFT instance feeding `Ledger::apply_checkpoint`.
+1. **Done:** Plonky3 Gate-A benchmark of the spend statement's STARK cost
+   (prove time, proof size, verify throughput) — see `gate-a-report.md`.
+2. Fuse `circuit-spend`'s balance AIR and Poseidon2 workload into one spend AIR
+   (bind hashes → public I/O, Merkle-to-anchor), then implement `SpendVerifier`
+   and the WP6d knockout/mutation harness against `check_spend_statement`.
+3. Bench the same statement on Stwo (M31) for the Gate-A bake-off; package the
+   mobile prover (WP8) for the phone prove-time figure.
+4. Swap the in-memory tree/state for RocksDB-backed implementations behind the
+   existing traits; integrate an AlephBFT instance feeding `apply_checkpoint`.
