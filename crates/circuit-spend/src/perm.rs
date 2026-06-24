@@ -109,12 +109,11 @@ impl Poseidon2PermAir<Val> {
         s
     }
 
-    /// Build the (row-replicated) trace for a single permutation of `input`.
-    pub fn generate_trace(&self, input: [Val; WIDTH], rows: usize) -> RowMajorMatrix<Val> {
-        assert!(rows.is_power_of_two());
-        let mut row = vec![Val::ZERO; WIDTH_COLS];
-        row[INP_OFF..INP_OFF + WIDTH].copy_from_slice(&input);
-
+    /// Fill the `WIDTH_COLS` permutation columns at the start of `dst` for a
+    /// permutation of `input` (committed input, then state after each round).
+    /// Shared by the standalone gadget and the Merkle gadget.
+    pub(crate) fn fill_perm_row(&self, input: [Val; WIDTH], dst: &mut [Val]) {
+        dst[INP_OFF..INP_OFF + WIDTH].copy_from_slice(&input);
         let mut s = input;
         LL::external_linear_layer(&mut s);
         for (r, rc) in self.begin.iter().enumerate() {
@@ -122,27 +121,44 @@ impl Poseidon2PermAir<Val> {
                 s[i] = (s[i] + rc[i]).exp_const_u64::<SBOX>();
             }
             LL::external_linear_layer(&mut s);
-            row[bf(r)..bf(r) + WIDTH].copy_from_slice(&s);
+            dst[bf(r)..bf(r) + WIDTH].copy_from_slice(&s);
         }
         for (r, &rc) in self.partial.iter().enumerate() {
             s[0] = (s[0] + rc).exp_const_u64::<SBOX>();
             LL::internal_linear_layer(&mut s);
-            row[pf(r)..pf(r) + WIDTH].copy_from_slice(&s);
+            dst[pf(r)..pf(r) + WIDTH].copy_from_slice(&s);
         }
         for (r, rc) in self.end.iter().enumerate() {
             for i in 0..WIDTH {
                 s[i] = (s[i] + rc[i]).exp_const_u64::<SBOX>();
             }
             LL::external_linear_layer(&mut s);
-            row[ef(r)..ef(r) + WIDTH].copy_from_slice(&s);
+            dst[ef(r)..ef(r) + WIDTH].copy_from_slice(&s);
         }
+    }
 
+    /// Build the (row-replicated) trace for a single permutation of `input`.
+    pub fn generate_trace(&self, input: [Val; WIDTH], rows: usize) -> RowMajorMatrix<Val> {
+        assert!(rows.is_power_of_two());
+        let mut row = vec![Val::ZERO; WIDTH_COLS];
+        self.fill_perm_row(input, &mut row);
         let mut values = Vec::with_capacity(WIDTH_COLS * rows);
         for _ in 0..rows {
             values.extend_from_slice(&row);
         }
         RowMajorMatrix::new(values, WIDTH_COLS)
     }
+}
+
+/// Column offset of the permutation's committed input block.
+pub(crate) const fn input_off() -> usize {
+    INP_OFF
+}
+
+/// Column offset of the permutation's output state (first 8 elements are the
+/// 2-to-1 compression output / truncated digest).
+pub(crate) const fn output_off() -> usize {
+    ef(HALF_FULL - 1)
 }
 
 /// Public values: the 16 input elements followed by the 16 output elements.
@@ -167,6 +183,58 @@ fn state_at<AB: AirBuilder>(local: &[AB::Var], off: usize) -> [AB::Expr; WIDTH] 
     array::from_fn(|i| local[off + i].into())
 }
 
+/// Constrain that the `WIDTH_COLS` permutation columns at the start of `local`
+/// form a correct Poseidon2 permutation of their committed input block. Each
+/// round constraint relates one committed state to the next; after asserting,
+/// `s` is reset to the committed columns so each round stays degree 7 (not a
+/// composed blow-up). Does NOT bind the input/output to anything — callers add
+/// their own boundary constraints. Shared by the gadget and the Merkle AIR.
+pub(crate) fn eval_perm_body<AB: AirBuilder>(
+    air: &Poseidon2PermAir<AB::F>,
+    builder: &mut AB,
+    local: &[AB::Var],
+) {
+    let mut s = state_at::<AB>(local, INP_OFF);
+    LL::external_linear_layer(&mut s);
+
+    for (r, rc) in air.begin.iter().enumerate() {
+        for i in 0..WIDTH {
+            let mut t = s[i].clone();
+            t += rc[i].clone();
+            s[i] = t.exp_const_u64::<SBOX>();
+        }
+        LL::external_linear_layer(&mut s);
+        for i in 0..WIDTH {
+            builder.assert_eq(local[bf(r) + i], s[i].clone());
+        }
+        s = state_at::<AB>(local, bf(r));
+    }
+
+    for (r, rc) in air.partial.iter().enumerate() {
+        let mut t = s[0].clone();
+        t += rc.clone();
+        s[0] = t.exp_const_u64::<SBOX>();
+        LL::internal_linear_layer(&mut s);
+        for i in 0..WIDTH {
+            builder.assert_eq(local[pf(r) + i], s[i].clone());
+        }
+        s = state_at::<AB>(local, pf(r));
+    }
+
+    for (r, rc) in air.end.iter().enumerate() {
+        for i in 0..WIDTH {
+            let mut t = s[i].clone();
+            t += rc[i].clone();
+            s[i] = t.exp_const_u64::<SBOX>();
+        }
+        LL::external_linear_layer(&mut s);
+        for i in 0..WIDTH {
+            builder.assert_eq(local[ef(r) + i], s[i].clone());
+        }
+        s = state_at::<AB>(local, ef(r));
+    }
+}
+
 impl<AB: AirBuilder> Air<AB> for Poseidon2PermAir<AB::F> {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
@@ -177,53 +245,10 @@ impl<AB: AirBuilder> Air<AB> for Poseidon2PermAir<AB::F> {
         for i in 0..WIDTH {
             builder.assert_eq(local[INP_OFF + i], pis[i]);
         }
-
-        // Each round constraint relates one committed state to the next; after
-        // asserting, we *reset* `s` to the committed columns so the next
-        // round's constraint stays degree 7 (not a composed blow-up).
-        let mut s = state_at::<AB>(local, INP_OFF);
-        LL::external_linear_layer(&mut s);
-
-        for (r, rc) in self.begin.iter().enumerate() {
-            for i in 0..WIDTH {
-                let mut t = s[i].clone();
-                t += rc[i].clone();
-                s[i] = t.exp_const_u64::<SBOX>();
-            }
-            LL::external_linear_layer(&mut s);
-            for i in 0..WIDTH {
-                builder.assert_eq(local[bf(r) + i], s[i].clone());
-            }
-            s = state_at::<AB>(local, bf(r));
-        }
-
-        for (r, rc) in self.partial.iter().enumerate() {
-            let mut t = s[0].clone();
-            t += rc.clone();
-            s[0] = t.exp_const_u64::<SBOX>();
-            LL::internal_linear_layer(&mut s);
-            for i in 0..WIDTH {
-                builder.assert_eq(local[pf(r) + i], s[i].clone());
-            }
-            s = state_at::<AB>(local, pf(r));
-        }
-
-        for (r, rc) in self.end.iter().enumerate() {
-            for i in 0..WIDTH {
-                let mut t = s[i].clone();
-                t += rc[i].clone();
-                s[i] = t.exp_const_u64::<SBOX>();
-            }
-            LL::external_linear_layer(&mut s);
-            for i in 0..WIDTH {
-                builder.assert_eq(local[ef(r) + i], s[i].clone());
-            }
-            s = state_at::<AB>(local, ef(r));
-        }
-
+        eval_perm_body(self, builder, local);
         // Bind the final state to the public output.
         for i in 0..WIDTH {
-            builder.assert_eq(local[ef(HALF_FULL - 1) + i], pis[WIDTH + i]);
+            builder.assert_eq(local[output_off() + i], pis[WIDTH + i]);
         }
     }
 }

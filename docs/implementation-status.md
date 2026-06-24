@@ -38,7 +38,7 @@ recipients exist only inside the wallets, and the public supply audit
 | `tree` | WP4 | ✅ (in-memory) | Append-only depth-32 Merkle tree, anchors + validity window, proptests. RocksDB backend pending |
 | `encryption` | WP5 | ✅ | 1273-byte hybrid ciphertexts, trial decryption + batch scan, tamper tests |
 | `prover-dev` | WP6 | ⚠ dev stand-in | Native spend-statement checker (C1–C9) = executable circuit spec; `check_spend_statement` is what the real circuit must enforce |
-| `circuit-spend` | WP6b | 🔶 partial (real STARK) | Plonky3 FRI STARK over BabyBear + Poseidon2 (D1/D2/D3): sound balance/range/dummy AIR (C4/C6/C7) + the spend statement's Poseidon2 permutation workload + Gate-A KPI harness. **Next:** fuse them, binding hashes → public nullifiers/commitments and the Merkle path to the anchor (C1/C2/C5) |
+| `circuit-spend` | WP6a/6b | 🔶 partial (real STARK) | Plonky3 FRI STARK over BabyBear + Poseidon2 (D1/D2/D3). WP6a gadgets: composable in-circuit Poseidon2 permutation (cross-checked vs Plonky3) and a depth-32 Merkle-path verifier (**C1**). Plus the sound balance/range/dummy AIR (**C4/C6/C7**), the Poseidon2 workload, and the Gate-A KPI harness. **Next:** fuse them — commitment/nullifier derivation (C2/C3/C5) wired to the Merkle leaf and public anchor — then `SpendVerifier` + WP6d knockout harness |
 | `tx` | WP9 | ✅ | `TxV1` fixed-layout codec, binding digest, malleability + uniformity tests, stateless validation |
 | `state` | WP10 | ✅ (in-memory) | Checkpoint state machine, nullifier set, reward minting, supply audit, deterministic-replay test |
 | `emission` | WP15 | ✅ | Float-free `E(h)` decay-to-tail schedule, weight-proportional distribution, β=0 |
