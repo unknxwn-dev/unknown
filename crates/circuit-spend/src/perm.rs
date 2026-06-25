@@ -193,8 +193,9 @@ pub(crate) fn eval_perm_body<AB: AirBuilder>(
     air: &Poseidon2PermAir<AB::F>,
     builder: &mut AB,
     local: &[AB::Var],
+    base: usize,
 ) {
-    let mut s = state_at::<AB>(local, INP_OFF);
+    let mut s = state_at::<AB>(local, base + INP_OFF);
     LL::external_linear_layer(&mut s);
 
     for (r, rc) in air.begin.iter().enumerate() {
@@ -205,9 +206,9 @@ pub(crate) fn eval_perm_body<AB: AirBuilder>(
         }
         LL::external_linear_layer(&mut s);
         for i in 0..WIDTH {
-            builder.assert_eq(local[bf(r) + i], s[i].clone());
+            builder.assert_eq(local[base + bf(r) + i], s[i].clone());
         }
-        s = state_at::<AB>(local, bf(r));
+        s = state_at::<AB>(local, base + bf(r));
     }
 
     for (r, rc) in air.partial.iter().enumerate() {
@@ -216,9 +217,9 @@ pub(crate) fn eval_perm_body<AB: AirBuilder>(
         s[0] = t.exp_const_u64::<SBOX>();
         LL::internal_linear_layer(&mut s);
         for i in 0..WIDTH {
-            builder.assert_eq(local[pf(r) + i], s[i].clone());
+            builder.assert_eq(local[base + pf(r) + i], s[i].clone());
         }
-        s = state_at::<AB>(local, pf(r));
+        s = state_at::<AB>(local, base + pf(r));
     }
 
     for (r, rc) in air.end.iter().enumerate() {
@@ -229,9 +230,9 @@ pub(crate) fn eval_perm_body<AB: AirBuilder>(
         }
         LL::external_linear_layer(&mut s);
         for i in 0..WIDTH {
-            builder.assert_eq(local[ef(r) + i], s[i].clone());
+            builder.assert_eq(local[base + ef(r) + i], s[i].clone());
         }
-        s = state_at::<AB>(local, ef(r));
+        s = state_at::<AB>(local, base + ef(r));
     }
 }
 
@@ -245,7 +246,7 @@ impl<AB: AirBuilder> Air<AB> for Poseidon2PermAir<AB::F> {
         for i in 0..WIDTH {
             builder.assert_eq(local[INP_OFF + i], pis[i]);
         }
-        eval_perm_body(self, builder, local);
+        eval_perm_body(self, builder, local, 0);
         // Bind the final state to the public output.
         for i in 0..WIDTH {
             builder.assert_eq(local[output_off() + i], pis[WIDTH + i]);

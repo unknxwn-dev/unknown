@@ -144,7 +144,7 @@ impl<AB: AirBuilder> Air<AB> for MerklePathAir<AB::F> {
         }
 
         // The Poseidon2 compression for this level.
-        eval_perm_body(&self.perm, builder, local);
+        eval_perm_body(&self.perm, builder, local, 0);
 
         // Chain: this level's output digest is the next level's current digest.
         for j in 0..DIGEST {
