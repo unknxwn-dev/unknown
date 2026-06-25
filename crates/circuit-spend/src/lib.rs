@@ -33,6 +33,7 @@ pub mod balance;
 pub mod field;
 pub mod gate_a;
 pub mod hash;
+pub mod membership;
 pub mod merkle;
 pub mod perm;
 pub mod poseidon2;
