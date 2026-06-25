@@ -37,4 +37,5 @@ pub mod membership;
 pub mod merkle;
 pub mod perm;
 pub mod poseidon2;
+pub mod spend;
 pub mod spend_input;

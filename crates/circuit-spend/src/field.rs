@@ -94,6 +94,17 @@ impl FriProfile {
         label: "compact (blowup 8, 34q)",
     };
 
+    /// Same security as COMPACT but `log_final_poly_len = 0`, which lowers the
+    /// FRI minimum trace height to 2^4. Used by the large fused circuits, whose
+    /// single-row computation is replicated to only 16 rows.
+    pub const COMPACT_SHORT: FriProfile = FriProfile {
+        log_blowup: 3,
+        num_queries: 34,
+        proof_of_work_bits: 1,
+        log_final_poly_len: 0,
+        label: "compact-short (blowup 8, 34q, lfp0)",
+    };
+
     /// The profiles Gate A reports on (≥ 2 param sets per the plan).
     pub const SWEEP: [FriProfile; 2] = [FriProfile::BALANCED, FriProfile::COMPACT];
 }

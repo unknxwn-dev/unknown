@@ -38,7 +38,7 @@ recipients exist only inside the wallets, and the public supply audit
 | `tree` | WP4 | ✅ (in-memory) | Append-only depth-32 Merkle tree, anchors + validity window, proptests. RocksDB backend pending |
 | `encryption` | WP5 | ✅ | 1273-byte hybrid ciphertexts, trial decryption + batch scan, tamper tests |
 | `prover-dev` | WP6 | ⚠ dev stand-in | Native spend-statement checker (C1–C9) = executable circuit spec; `check_spend_statement` is what the real circuit must enforce |
-| `circuit-spend` | WP6a/6b | 🔶 partial (real STARK) | Plonky3 FRI STARK over BabyBear + Poseidon2 (D1/D2/D3). WP6a gadgets, all sound + tested: composable Poseidon2 permutation (cross-checked vs Plonky3), depth-32 Merkle verifier (**C1**), rate-8 sponge hash (**C2/C5**), balance/range/dummy AIR (**C4/C6/C7**); plus the Poseidon2 workload + Gate-A KPI harness. WP6b fusion started: a `membership` circuit wires the sponge commitment output into the Merkle leaf (**C5+C1**), proving a hidden note's inclusion under the public anchor. **Next:** add nullifiers (C2), ownership (C3), output commitments + balance to the fused statement, then `SpendVerifier` + WP6d knockout harness |
+| `circuit-spend` | WP6a/6b | ✅ statement / 🔶 not yet wired | Plonky3 FRI STARK over BabyBear + Poseidon2 (D1/D2/D3). WP6a gadgets, all sound + tested: composable Poseidon2 permutation (cross-checked vs Plonky3), depth-32 Merkle verifier (**C1**), rate-8 sponge hash (**C2/C5**), balance/range/dummy AIR (**C4/C6/C7**); plus the Poseidon2 workload + Gate-A KPI harness. **WP6b complete:** `spend` is the full uniform **2-in/2-out statement (C1–C7)** in one STARK — commitments, membership-to-anchor, nullifiers, ownership (addr_tag==nk), dummy bypass, range, and balance — proving/verifying with `prove_spend`/`verify_spend` (mint/coinbase too); inflation, wrong root/nullifier/output-commitment all rejected. **Next:** WP6d knockout harness, and bridge to the frozen byte-digest `SpendVerifier` (needs the pipeline BLAKE3→Poseidon2 migration) |
 | `tx` | WP9 | ✅ | `TxV1` fixed-layout codec, binding digest, malleability + uniformity tests, stateless validation |
 | `state` | WP10 | ✅ (in-memory) | Checkpoint state machine, nullifier set, reward minting, supply audit, deterministic-replay test |
 | `emission` | WP15 | ✅ | Float-free `E(h)` decay-to-tail schedule, weight-proportional distribution, β=0 |
@@ -50,14 +50,15 @@ recipients exist only inside the wallets, and the public supply audit
 
 These are sequenced behind gates in the engineering plan, not overlooked:
 
-- **Fused STARK spend circuit (WP6b)** — `circuit-spend` now has the real
-  pieces: the proof-system foundation, a sound arithmetic AIR (C4/C6/C7), the
-  in-circuit Poseidon2 workload, and the Gate-A benchmark. What remains is to
-  *fuse* them into one AIR that binds the proven hashes to the public
-  nullifiers/commitments (C2/C5), checks ownership (C3), and verifies the
-  depth-32 Merkle path to the anchor root (C1) — at which point it can replace
-  the dev verifier behind the frozen `SpendVerifier`. The constraint spec
-  (`check_spend_statement`) is what it must match.
+- **STARK spend circuit (WP6b)** — *built*: `circuit-spend::spend` is the full
+  uniform 2-in/2-out statement (C1–C7) as one sound, tested STARK. What remains
+  before it replaces the dev verifier in the pipeline: (a) the **WP6d knockout
+  harness** (mutate each constraint family, assert a test catches it), and (b)
+  bridging to the frozen `SpendVerifier`, whose `SpendPublicInputs` use 32-byte
+  digests + a `u64` mint while the circuit uses Poseidon2 field-element digests
+  (decision D3) — i.e. the pipeline's BLAKE3→Poseidon2 migration. Note the
+  circuit makes documented v0 simplifications vs. §3.3 (ownership as
+  `addr_tag == nk`, output `rho` not yet derived from the input nullifier).
 - **DAG-BFT consensus (WP11)** — the state machine already consumes a *total
   order* of transactions, which is exactly what AlephBFT/Mysticeti produce. The
   single sequencer is a stand-in for that ordering service.
