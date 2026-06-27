@@ -33,9 +33,12 @@ pub mod balance;
 pub mod field;
 pub mod gate_a;
 pub mod hash;
+#[cfg(test)]
+mod knockout;
 pub mod membership;
 pub mod merkle;
 pub mod perm;
 pub mod poseidon2;
 pub mod spend;
 pub mod spend_input;
+pub mod verifier;

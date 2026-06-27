@@ -127,13 +127,30 @@ const fn val_byte(v: usize, j: usize) -> usize {
 /// One Merkle path step (sibling digest, direction bit).
 pub type PathStep = ([Val; DIGEST], bool);
 
-/// Witness for one input note.
+/// Witness for one input note. For an honestly-owned note `addr_tag == nk`.
 #[derive(Clone)]
 pub struct InputNote {
     pub value: u64,
+    pub addr_tag: [Val; RATE],
     pub rho: [Val; RATE],
     pub path: Vec<PathStep>,
     pub dummy: bool,
+}
+
+/// Which constraint family to disable, for the WP6d knockout/mutation harness.
+/// `None` is the real circuit; the others drop exactly one family so a test can
+/// confirm that family (and only it) catches a corresponding fault.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum Knockout {
+    #[default]
+    None,
+    C1,
+    C2,
+    C3,
+    C4,
+    C5,
+    C6,
+    C7,
 }
 
 /// Witness for one output note.
@@ -202,12 +219,23 @@ fn byte_to_field(b: u64) -> Val {
 #[derive(Clone)]
 pub struct SpendAir<F> {
     perm: Poseidon2PermAir<F>,
+    /// Constraint family to disable (knockout harness); `None` in production.
+    pub knockout: Knockout,
 }
 
 impl SpendAir<Val> {
     pub fn new_seeded() -> Self {
         Self {
             perm: Poseidon2PermAir::new_seeded(),
+            knockout: Knockout::None,
+        }
+    }
+
+    /// Return a copy with one constraint family disabled (test harness only).
+    pub fn with_knockout(&self, k: Knockout) -> Self {
+        Self {
+            perm: self.perm.clone(),
+            knockout: k,
         }
     }
 
@@ -296,8 +324,8 @@ impl SpendAir<Val> {
 
         for (i, note) in inputs.iter().enumerate() {
             let value = Self::value_block(note.value);
-            // cm = H(value ‖ addr_tag(=nk) ‖ rho)
-            let cm = self.fill_sponge(&[value, nk, note.rho], &mut row, in_base(i));
+            // cm = H(value ‖ addr_tag ‖ rho); honest notes have addr_tag = nk.
+            let cm = self.fill_sponge(&[value, note.addr_tag, note.rho], &mut row, in_base(i));
             // nf = H(nk ‖ rho)
             let nf = self.fill_sponge(&[nk, note.rho], &mut row, in_nf_block(i, 0));
             nullifiers[i] = nf;
@@ -428,8 +456,10 @@ impl<AB: AirBuilder> Air<AB> for SpendAir<AB::F> {
             let cm_rho = in_cm_block(i, 2) + input_off();
             let nf_rho = in_nf_block(i, 1) + input_off();
             for j in 0..RATE {
-                builder.assert_eq(local[addr_tag + j], local[nk + j]);
-                builder.assert_eq(local[cm_rho + j], local[nf_rho + j]);
+                if self.knockout != Knockout::C3 {
+                    builder.assert_eq(local[addr_tag + j], local[nk + j]); // C3
+                }
+                builder.assert_eq(local[cm_rho + j], local[nf_rho + j]); // shared rho
             }
             // For input i > 0 the keys must match input 0's (one spender).
             if i > 0 {
@@ -440,15 +470,19 @@ impl<AB: AirBuilder> Air<AB> for SpendAir<AB::F> {
             }
 
             // C2 nullifier bound to public.
-            for j in 0..DIGEST {
-                builder.assert_eq(local[in_nf_out(i) + j], pis[pi_nf(i) + j]);
+            if self.knockout != Knockout::C2 {
+                for j in 0..DIGEST {
+                    builder.assert_eq(local[in_nf_out(i) + j], pis[pi_nf(i) + j]);
+                }
             }
 
             // C4 dummy flag boolean; a dummy carries no value.
             let d = local[dummy_col(i)];
             builder.assert_bool(d);
-            for j in 0..LIMBS {
-                builder.assert_zero(d * limb_from_bits::<AB>(local, i, j));
+            if self.knockout != Knockout::C4 {
+                for j in 0..LIMBS {
+                    builder.assert_zero(d * limb_from_bits::<AB>(local, i, j));
+                }
             }
 
             // C1 membership: Merkle path from cm; root bound to anchor unless
@@ -472,55 +506,64 @@ impl<AB: AirBuilder> Air<AB> for SpendAir<AB::F> {
                 }
                 eval_perm_body(&self.perm, builder, local, pbase);
             }
-            let real: AB::Expr = AB::Expr::ONE - local[dummy_col(i)].into();
-            for j in 0..DIGEST {
-                let diff: AB::Expr = local[in_root(i) + j].into() - pis[PI_ROOT + j].into();
-                builder.assert_zero(real.clone() * diff);
+            // C1 root binding (skipped for dummies).
+            if self.knockout != Knockout::C1 {
+                let real: AB::Expr = AB::Expr::ONE - local[dummy_col(i)].into();
+                for j in 0..DIGEST {
+                    let diff: AB::Expr = local[in_root(i) + j].into() - pis[PI_ROOT + j].into();
+                    builder.assert_zero(real.clone() * diff);
+                }
             }
         }
 
-        // ---- outputs: commitment bound to public ----
+        // ---- outputs: commitment bound to public (C5) ----
         for j in 0..N_OUT {
             eval_sponge(&self.perm, builder, local, out_base(j), CM_BLOCKS);
-            for k in 0..DIGEST {
-                builder.assert_eq(local[out_cm_out(j) + k], pis[pi_cm(j) + k]);
+            if self.knockout != Knockout::C5 {
+                for k in 0..DIGEST {
+                    builder.assert_eq(local[out_cm_out(j) + k], pis[pi_cm(j) + k]);
+                }
             }
         }
 
         // ---- C6 range: each value byte is a bit-decomposed limb < 256, and
         // the value is < 2^62 (top two bits of the high limb are zero). The
         // commitment sponge's value block must equal the reconstructed limbs.
-        for v in 0..N_VALUES {
-            for j in 0..LIMBS {
-                for k in 0..BITS {
-                    builder.assert_bool(local[val_bit(v, j, k)]);
+        if self.knockout != Knockout::C6 {
+            for v in 0..N_VALUES {
+                for j in 0..LIMBS {
+                    for k in 0..BITS {
+                        builder.assert_bool(local[val_bit(v, j, k)]);
+                    }
+                    builder.assert_eq(local[val_byte(v, j)], limb_from_bits::<AB>(local, v, j));
                 }
-                builder.assert_eq(local[val_byte(v, j)], limb_from_bits::<AB>(local, v, j));
+                builder.assert_zero(local[val_bit(v, LIMBS - 1, 6)]);
+                builder.assert_zero(local[val_bit(v, LIMBS - 1, 7)]);
             }
-            builder.assert_zero(local[val_bit(v, LIMBS - 1, 6)]);
-            builder.assert_zero(local[val_bit(v, LIMBS - 1, 7)]);
         }
 
         // ---- C7 balance: Σ v_in + mint = Σ v_out via signed byte carries ----
-        let c256 = pow2::<AB>(8);
-        let four = pow2::<AB>(2);
-        let mut carry_in = AB::Expr::ZERO;
-        for j in 0..LIMBS {
-            let in_sum = limb_from_bits::<AB>(local, 0, j)
-                + limb_from_bits::<AB>(local, 1, j)
-                + pis[PI_MINT + j].into();
-            let out_sum = limb_from_bits::<AB>(local, 2, j) + limb_from_bits::<AB>(local, 3, j);
-            let carry_out = local[carry_bit(j, 0)]
-                + local[carry_bit(j, 1)] * AB::Expr::TWO
-                + local[carry_bit(j, 2)] * four.clone()
-                - AB::Expr::TWO;
-            builder.assert_eq(
-                in_sum + carry_in.clone(),
-                out_sum + carry_out.clone() * c256.clone(),
-            );
-            carry_in = carry_out;
+        if self.knockout != Knockout::C7 {
+            let c256 = pow2::<AB>(8);
+            let four = pow2::<AB>(2);
+            let mut carry_in = AB::Expr::ZERO;
+            for j in 0..LIMBS {
+                let in_sum = limb_from_bits::<AB>(local, 0, j)
+                    + limb_from_bits::<AB>(local, 1, j)
+                    + pis[PI_MINT + j].into();
+                let out_sum = limb_from_bits::<AB>(local, 2, j) + limb_from_bits::<AB>(local, 3, j);
+                let carry_out = local[carry_bit(j, 0)]
+                    + local[carry_bit(j, 1)] * AB::Expr::TWO
+                    + local[carry_bit(j, 2)] * four.clone()
+                    - AB::Expr::TWO;
+                builder.assert_eq(
+                    in_sum + carry_in.clone(),
+                    out_sum + carry_out.clone() * c256.clone(),
+                );
+                carry_in = carry_out;
+            }
+            builder.assert_zero(carry_in);
         }
-        builder.assert_zero(carry_in);
 
         // carry bits boolean.
         for j in 0..LIMBS {
@@ -603,12 +646,14 @@ mod tests {
         let inputs = [
             InputNote {
                 value: vin[0],
+                addr_tag: nk,
                 rho: rho0,
                 path: path0,
                 dummy: false,
             },
             InputNote {
                 value: vin[1],
+                addr_tag: nk,
                 rho: rho1,
                 path: path1,
                 dummy: false,
@@ -649,12 +694,14 @@ mod tests {
         let inputs = [
             InputNote {
                 value: 0,
+                addr_tag: nk,
                 rho: digest(&mut rng),
                 path: dpath(&mut rng),
                 dummy: true,
             },
             InputNote {
                 value: 0,
+                addr_tag: nk,
                 rho: digest(&mut rng),
                 path: dpath(&mut rng),
                 dummy: true,

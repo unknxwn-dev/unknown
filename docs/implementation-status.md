@@ -38,7 +38,7 @@ recipients exist only inside the wallets, and the public supply audit
 | `tree` | WP4 | ✅ (in-memory) | Append-only depth-32 Merkle tree, anchors + validity window, proptests. RocksDB backend pending |
 | `encryption` | WP5 | ✅ | 1273-byte hybrid ciphertexts, trial decryption + batch scan, tamper tests |
 | `prover-dev` | WP6 | ⚠ dev stand-in | Native spend-statement checker (C1–C9) = executable circuit spec; `check_spend_statement` is what the real circuit must enforce |
-| `circuit-spend` | WP6a/6b | ✅ statement / 🔶 not yet wired | Plonky3 FRI STARK over BabyBear + Poseidon2 (D1/D2/D3). WP6a gadgets, all sound + tested: composable Poseidon2 permutation (cross-checked vs Plonky3), depth-32 Merkle verifier (**C1**), rate-8 sponge hash (**C2/C5**), balance/range/dummy AIR (**C4/C6/C7**); plus the Poseidon2 workload + Gate-A KPI harness. **WP6b complete:** `spend` is the full uniform **2-in/2-out statement (C1–C7)** in one STARK — commitments, membership-to-anchor, nullifiers, ownership (addr_tag==nk), dummy bypass, range, and balance — proving/verifying with `prove_spend`/`verify_spend` (mint/coinbase too); inflation, wrong root/nullifier/output-commitment all rejected. **Next:** WP6d knockout harness, and bridge to the frozen byte-digest `SpendVerifier` (needs the pipeline BLAKE3→Poseidon2 migration) |
+| `circuit-spend` | WP6a/6b/6d | ✅ circuit / 🔶 pipeline swap pending | Plonky3 FRI STARK over BabyBear + Poseidon2 (D1/D2/D3). WP6a gadgets (all sound + tested): Poseidon2 permutation (cross-checked vs Plonky3), depth-32 Merkle verifier (**C1**), rate-8 sponge hash (**C2/C5**), balance/range/dummy AIR (**C4/C6/C7**); plus the Poseidon2 workload + Gate-A KPI harness. **WP6b:** `spend` is the full **2-in/2-out statement (C1–C7)** in one STARK (`prove_spend`/`verify_spend`; mint/coinbase too). **WP6d:** `knockout` mutation harness asserts every constraint family is load-bearing and isolatable. **Bridge:** `StarkSpendVerifier` implements the frozen `SpendVerifier` over packed Poseidon2 digests (round-trip tested). **Remaining:** make the rest of the pipeline emit Poseidon2 digests (BLAKE3→Poseidon2 migration) to use it for real txs |
 | `tx` | WP9 | ✅ | `TxV1` fixed-layout codec, binding digest, malleability + uniformity tests, stateless validation |
 | `state` | WP10 | ✅ (in-memory) | Checkpoint state machine, nullifier set, reward minting, supply audit, deterministic-replay test |
 | `emission` | WP15 | ✅ | Float-free `E(h)` decay-to-tail schedule, weight-proportional distribution, β=0 |
@@ -50,14 +50,18 @@ recipients exist only inside the wallets, and the public supply audit
 
 These are sequenced behind gates in the engineering plan, not overlooked:
 
-- **STARK spend circuit (WP6b)** — *built*: `circuit-spend::spend` is the full
-  uniform 2-in/2-out statement (C1–C7) as one sound, tested STARK. What remains
-  before it replaces the dev verifier in the pipeline: (a) the **WP6d knockout
-  harness** (mutate each constraint family, assert a test catches it), and (b)
-  bridging to the frozen `SpendVerifier`, whose `SpendPublicInputs` use 32-byte
-  digests + a `u64` mint while the circuit uses Poseidon2 field-element digests
-  (decision D3) — i.e. the pipeline's BLAKE3→Poseidon2 migration. Note the
-  circuit makes documented v0 simplifications vs. §3.3 (ownership as
+- **STARK spend circuit (WP6b/6d)** — *built and self-contained*:
+  `circuit-spend::spend` is the full uniform 2-in/2-out statement (C1–C7) as one
+  sound, tested STARK; the WP6d `knockout` harness proves each constraint family
+  is load-bearing; and `StarkSpendVerifier` already implements the frozen
+  `SpendVerifier` over packed Poseidon2 digests. The one remaining step to use
+  it for *real* transactions is the **pipeline BLAKE3→Poseidon2 migration** —
+  making `notes`/`tree`/`tx`/`state` compute Poseidon2 field-element digests
+  (decision D3) instead of BLAKE3, so the bytes in `SpendPublicInputs` are the
+  packed field digests the circuit expects. That is a deliberate, separate
+  cross-crate change (it rewrites the commitment/nullifier/anchor representation
+  and all golden vectors), not started here to keep the working pipeline green.
+  Note also the circuit's documented v0 simplifications vs. §3.3 (ownership as
   `addr_tag == nk`, output `rho` not yet derived from the input nullifier).
 - **DAG-BFT consensus (WP11)** — the state machine already consumes a *total
   order* of transactions, which is exactly what AlephBFT/Mysticeti produce. The
