@@ -7,6 +7,7 @@ license.workspace = true
 [dependencies]
 unknown-interfaces.workspace = true
 unknown-primitives.workspace = true
+unknown-poseidon.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true

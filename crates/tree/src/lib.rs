@@ -12,16 +12,23 @@
 
 use std::collections::VecDeque;
 use unknown_interfaces::{Anchor, Commitment, MerklePath, ANCHOR_WINDOW, TREE_DEPTH};
-use unknown_primitives::{ds, hash_parts};
+use unknown_poseidon as poseidon;
 
+/// Merkle node hash: Poseidon2 2-to-1 compression of the two child digests
+/// (decision D3), matching the in-circuit Merkle relation. Children are packed
+/// 8-element digests; unpack, compress, repack.
 fn node_hash(left: &[u8; 32], right: &[u8; 32]) -> [u8; 32] {
-    hash_parts(ds::MERKLE_NODE, &[left, right])
+    poseidon::pack(poseidon::compress(
+        poseidon::unpack(*left),
+        poseidon::unpack(*right),
+    ))
 }
 
-/// Precomputed hashes of empty subtrees at each level (0 = leaf level).
+/// Precomputed hashes of empty subtrees at each level (0 = leaf level). The
+/// empty leaf is the all-zero digest.
 fn empty_roots() -> [[u8; 32]; TREE_DEPTH + 1] {
     let mut roots = [[0u8; 32]; TREE_DEPTH + 1];
-    roots[0] = hash_parts(ds::MERKLE_EMPTY, &[]);
+    roots[0] = [0u8; 32]; // all-zero digest
     let mut level = 1;
     while level <= TREE_DEPTH {
         roots[level] = node_hash(&roots[level - 1], &roots[level - 1]);
@@ -168,6 +175,7 @@ pub fn verify_path(leaf: &Commitment, path: &MerklePath, root: &[u8; 32]) -> boo
 mod tests {
     use super::*;
     use proptest::prelude::*;
+    use unknown_primitives::hash_parts;
 
     fn cm(b: u8) -> Commitment {
         Commitment([b; 32])
@@ -221,8 +229,12 @@ mod tests {
     }
 
     proptest! {
+        // Poseidon2 is ~100× slower than BLAKE3, and this case is O(n²·depth)
+        // hashing, so cap cases/size — it checks the witness↔root relation, not
+        // throughput.
+        #![proptest_config(ProptestConfig::with_cases(24))]
         #[test]
-        fn all_witnesses_verify(n in 1usize..200) {
+        fn all_witnesses_verify(n in 1usize..24) {
             let mut t = CommitmentTree::new();
             let leaves: Vec<Commitment> =
                 (0..n).map(|i| Commitment(hash_parts("test.leaf", &[&(i as u64).to_le_bytes()]))).collect();

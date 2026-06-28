@@ -1470,6 +1470,7 @@ version = "0.0.1"
 dependencies = [
  "unknown-interfaces",
  "unknown-keys",
+ "unknown-poseidon",
  "unknown-primitives",
 ]
 
@@ -1526,6 +1527,7 @@ version = "0.0.1"
 dependencies = [
  "proptest",
  "unknown-interfaces",
+ "unknown-poseidon",
  "unknown-primitives",
 ]
 
