@@ -1405,6 +1405,7 @@ dependencies = [
  "rand 0.10.1",
  "unknown-interfaces",
  "unknown-notes",
+ "unknown-poseidon",
  "unknown-primitives",
 ]
 
@@ -1470,6 +1471,18 @@ dependencies = [
  "unknown-interfaces",
  "unknown-keys",
  "unknown-primitives",
+]
+
+[[package]]
+name = "unknown-poseidon"
+version = "0.0.1"
+dependencies = [
+ "p3-baby-bear",
+ "p3-field",
+ "p3-matrix",
+ "p3-poseidon2",
+ "p3-poseidon2-air",
+ "rand 0.10.1",
 ]
 
 [[package]]

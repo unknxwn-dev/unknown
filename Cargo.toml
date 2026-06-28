@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/interfaces",
     "crates/primitives",
+    "crates/poseidon",
     "crates/keys",
     "crates/notes",
     "crates/tree",
@@ -28,6 +29,7 @@ license = "MIT OR Apache-2.0"
 [workspace.dependencies]
 unknown-interfaces = { path = "crates/interfaces", version = "0.0.1" }
 unknown-primitives = { path = "crates/primitives", version = "0.0.1" }
+unknown-poseidon = { path = "crates/poseidon", version = "0.0.1" }
 unknown-keys = { path = "crates/keys", version = "0.0.1" }
 unknown-notes = { path = "crates/notes", version = "0.0.1" }
 unknown-tree = { path = "crates/tree", version = "0.0.1" }

@@ -29,9 +29,6 @@ use p3_field::PrimeCharacteristicRing;
 use p3_matrix::dense::RowMajorMatrix;
 use p3_poseidon2::GenericPoseidon2LinearLayers;
 use p3_uni_stark::{prove, verify, Proof};
-use rand::distr::StandardUniform;
-use rand::rngs::SmallRng;
-use rand::{RngExt, SeedableRng};
 
 use crate::field::{make_config, Config, FriProfile, Val};
 
@@ -74,14 +71,15 @@ pub struct Poseidon2PermAir<F> {
 }
 
 impl Poseidon2PermAir<Val> {
-    /// Construct with deterministic round constants (production must freeze
-    /// these to `specs/vectors/poseidon2.json`, WP1).
+    /// Construct from the shared, frozen Poseidon2 constants in
+    /// [`unknown_poseidon`] — so the circuit AIR and the pipeline hash use
+    /// identical round constants (production freezes them, WP1).
     pub fn new_seeded() -> Self {
-        let mut rng = SmallRng::seed_from_u64(42);
+        let c = unknown_poseidon::constants();
         Self {
-            begin: array::from_fn(|_| array::from_fn(|_| rng.sample(StandardUniform))),
-            partial: array::from_fn(|_| rng.sample(StandardUniform)),
-            end: array::from_fn(|_| array::from_fn(|_| rng.sample(StandardUniform))),
+            begin: c.begin,
+            partial: c.partial,
+            end: c.end,
         }
     }
 
@@ -283,6 +281,9 @@ mod tests {
     use super::*;
     use core::borrow::Borrow;
     use p3_poseidon2_air::{generate_trace_rows, num_cols, Poseidon2Cols, RoundConstants};
+    use rand::distr::StandardUniform;
+    use rand::rngs::SmallRng;
+    use rand::{RngExt, SeedableRng};
 
     fn rand_state(seed: u64) -> [Val; WIDTH] {
         let mut rng = SmallRng::seed_from_u64(seed);

@@ -12,6 +12,7 @@ workspace = true
 
 [dependencies]
 unknown-interfaces = { workspace = true }
+unknown-poseidon = { workspace = true }
 
 # Plonky3 (crates.io, pinned). MIT/Apache-2.0.
 p3-air = "0.6.1"
