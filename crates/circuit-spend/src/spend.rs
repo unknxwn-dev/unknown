@@ -36,8 +36,9 @@ use crate::field::{make_config, Config, FriProfile, Val};
 use crate::hash::{CAP, DIGEST, RATE};
 use crate::perm::{eval_perm_body, input_off, output_off, Poseidon2PermAir, WIDTH, WIDTH_COLS};
 
-/// Commitment preimage blocks: value ‖ addr_tag ‖ rho.
-pub const CM_BLOCKS: usize = 3;
+/// Commitment preimage blocks: value ‖ addr_tag ‖ rho ‖ rseed (matches
+/// `unknown_notes::Note::commitment`).
+pub const CM_BLOCKS: usize = 4;
 /// Nullifier preimage blocks: nk ‖ rho.
 pub const NF_BLOCKS: usize = 2;
 /// Merkle depth.
@@ -133,6 +134,7 @@ pub struct InputNote {
     pub value: u64,
     pub addr_tag: [Val; RATE],
     pub rho: [Val; RATE],
+    pub rseed: [Val; RATE],
     pub path: Vec<PathStep>,
     pub dummy: bool,
 }
@@ -159,6 +161,7 @@ pub struct OutputNote {
     pub value: u64,
     pub addr_tag: [Val; RATE],
     pub rho: [Val; RATE],
+    pub rseed: [Val; RATE],
 }
 
 /// Public outputs of proving: anchor root, the two nullifiers, the two output
@@ -250,9 +253,15 @@ impl SpendAir<Val> {
         core::array::from_fn(|j| byte_to_field(byte(value, j)))
     }
 
-    /// Host: note commitment `H(value ‖ addr_tag ‖ rho)`.
-    pub fn commit(&self, value: u64, addr_tag: [Val; RATE], rho: [Val; RATE]) -> [Val; DIGEST] {
-        let blocks = [Self::value_block(value), addr_tag, rho];
+    /// Host: note commitment `H(value ‖ addr_tag ‖ rho ‖ rseed)`.
+    pub fn commit(
+        &self,
+        value: u64,
+        addr_tag: [Val; RATE],
+        rho: [Val; RATE],
+        rseed: [Val; RATE],
+    ) -> [Val; DIGEST] {
+        let blocks = [Self::value_block(value), addr_tag, rho, rseed];
         let mut state = [Val::ZERO; WIDTH];
         for block in &blocks {
             state[0..RATE].copy_from_slice(block);
@@ -324,8 +333,12 @@ impl SpendAir<Val> {
 
         for (i, note) in inputs.iter().enumerate() {
             let value = Self::value_block(note.value);
-            // cm = H(value ‖ addr_tag ‖ rho); honest notes have addr_tag = nk.
-            let cm = self.fill_sponge(&[value, note.addr_tag, note.rho], &mut row, in_base(i));
+            // cm = H(value ‖ addr_tag ‖ rho ‖ rseed); honest notes have addr_tag = nk.
+            let cm = self.fill_sponge(
+                &[value, note.addr_tag, note.rho, note.rseed],
+                &mut row,
+                in_base(i),
+            );
             // nf = H(nk ‖ rho)
             let nf = self.fill_sponge(&[nk, note.rho], &mut row, in_nf_block(i, 0));
             nullifiers[i] = nf;
@@ -339,7 +352,11 @@ impl SpendAir<Val> {
         let mut out_cms = [[Val::ZERO; DIGEST]; N_OUT];
         for (j, note) in outputs.iter().enumerate() {
             let value = Self::value_block(note.value);
-            out_cms[j] = self.fill_sponge(&[value, note.addr_tag, note.rho], &mut row, out_base(j));
+            out_cms[j] = self.fill_sponge(
+                &[value, note.addr_tag, note.rho, note.rseed],
+                &mut row,
+                out_base(j),
+            );
         }
 
         // value range bits (inputs then outputs) + balance carry bits.
@@ -628,10 +645,12 @@ mod tests {
         let nk = digest(&mut rng);
         let rho0 = digest(&mut rng);
         let rho1 = digest(&mut rng);
+        let rs0 = digest(&mut rng);
+        let rs1 = digest(&mut rng);
 
         // The two input commitments (addr_tag = nk for ownership).
-        let cm0 = air.commit(vin[0], nk, rho0);
-        let cm1 = air.commit(vin[1], nk, rho1);
+        let cm0 = air.commit(vin[0], nk, rho0, rs0);
+        let cm1 = air.commit(vin[1], nk, rho1, rs1);
 
         // Level 0: the inputs are each other's siblings (leaf0 left, leaf1
         // right); levels 1.. share the same siblings, so both reach one root.
@@ -648,6 +667,7 @@ mod tests {
                 value: vin[0],
                 addr_tag: nk,
                 rho: rho0,
+                rseed: rs0,
                 path: path0,
                 dummy: false,
             },
@@ -655,6 +675,7 @@ mod tests {
                 value: vin[1],
                 addr_tag: nk,
                 rho: rho1,
+                rseed: rs1,
                 path: path1,
                 dummy: false,
             },
@@ -664,11 +685,13 @@ mod tests {
                 value: vout[0],
                 addr_tag: digest(&mut rng),
                 rho: digest(&mut rng),
+                rseed: digest(&mut rng),
             },
             OutputNote {
                 value: vout[1],
                 addr_tag: digest(&mut rng),
                 rho: digest(&mut rng),
+                rseed: digest(&mut rng),
             },
         ];
         (air, nk, inputs, outputs)
@@ -696,6 +719,7 @@ mod tests {
                 value: 0,
                 addr_tag: nk,
                 rho: digest(&mut rng),
+                rseed: digest(&mut rng),
                 path: dpath(&mut rng),
                 dummy: true,
             },
@@ -703,6 +727,7 @@ mod tests {
                 value: 0,
                 addr_tag: nk,
                 rho: digest(&mut rng),
+                rseed: digest(&mut rng),
                 path: dpath(&mut rng),
                 dummy: true,
             },
@@ -712,11 +737,13 @@ mod tests {
                 value: 1000,
                 addr_tag: digest(&mut rng),
                 rho: digest(&mut rng),
+                rseed: digest(&mut rng),
             },
             OutputNote {
                 value: 0,
                 addr_tag: digest(&mut rng),
                 rho: digest(&mut rng),
+                rseed: digest(&mut rng),
             },
         ];
         let (config, proof, public) = prove_spend(&air, nk, &inputs, &outputs, 1000);

@@ -36,3 +36,4 @@ postcard = { version = "1", features = ["alloc"] }
 [dev-dependencies]
 unknown-notes = { workspace = true }
 unknown-primitives = { workspace = true }
+unknown-tree = { workspace = true }

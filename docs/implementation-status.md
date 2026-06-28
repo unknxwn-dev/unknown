@@ -9,16 +9,22 @@ A complete **shielded-payment pipeline over a single sequencer** (engineering
 plan Phase 1) compiles, is tested, and runs end to end:
 
 ```
-cargo test --all          # 53 tests, all passing
+cargo test --all          # all passing
 cargo run --bin unknown-devnet   # full lifecycle demo
 cargo clippy --all-targets       # clean (warnings denied)
 cargo run --release -p unknown-circuit-spend --bin gate-a-bench   # Gate-A KPIs
 ```
 
-The single-sequencer pipeline still runs on the dev prover. Alongside it, a
-**real Plonky3 FRI STARK** (`circuit-spend`, decisions D1/D2/D3) now proves the
-spend statement's Poseidon2 workload and its arithmetic (balance/range/dummy)
-constraints, and emits the Gate-A KPI report ([`gate-a-report.md`](gate-a-report.md)).
+The pipeline now hashes commitments/nullifiers/Merkle nodes with **Poseidon2
+over BabyBear** (decision D3) via the shared `unknown-poseidon` crate — the same
+hash the **real Plonky3 FRI STARK** (`circuit-spend`) proves. The full
+**2-in/2-out spend statement (C1–C7)** proves and verifies, a WP6d knockout
+harness shows every constraint is load-bearing, and an end-to-end test
+(`circuit-spend/tests/pipeline.rs`) takes a real note through the real tree and
+**verifies it under the frozen `SpendVerifier`**. See
+[`poseidon-migration.md`](poseidon-migration.md) and the Gate-A KPI report
+([`gate-a-report.md`](gate-a-report.md)). The single-sequencer devnet still runs
+on the dev prover pending the wallet/node wiring (migration doc, step 5).
 
 The devnet demo performs a genesis funding, a private transfer Alice→Bob, a
 checkpoint with validator reward minting, wallet scanning by trial-decryption,
@@ -32,10 +38,11 @@ recipients exist only inside the wallets, and the public supply audit
 | Crate | WP | Status | Notes |
 |---|---|---|---|
 | `interfaces` | WP0 | ✅ | Frozen cross-crate types, constants, `SpendVerifier`, wire arities |
-| `primitives` | WP1 | ✅ | Domain-separated BLAKE3 hashing + KDF, central context registry, golden tests |
+| `primitives` | WP1 | ✅ | Domain-separated BLAKE3 hashing + KDF (rho/binding/keys), central context registry, golden tests |
+| `poseidon` | WP1 | ✅ | Shared **Poseidon2-over-BabyBear** protocol hash (D3): permutation (cross-checked vs Plonky3), sponge, compression, digest pack/unpack — one source for circuit + pipeline |
 | `keys` | WP2 | ✅ | Seed→key tree, **hybrid X25519 + ML-KEM-768** keys, address codec, zeroization |
-| `notes` | WP3 | ✅ | Note/commitment/nullifier, dummy notes, rho derivation, binding tests |
-| `tree` | WP4 | ✅ (in-memory) | Append-only depth-32 Merkle tree, anchors + validity window, proptests. RocksDB backend pending |
+| `notes` | WP3 | ✅ | Note/**Poseidon2** commitment+nullifier, dummy notes, rho derivation, binding tests |
+| `tree` | WP4 | ✅ (in-memory) | Append-only depth-32 **Poseidon2** Merkle tree, anchors + validity window, proptests. RocksDB backend pending |
 | `encryption` | WP5 | ✅ | 1273-byte hybrid ciphertexts, trial decryption + batch scan, tamper tests |
 | `prover-dev` | WP6 | ⚠ dev stand-in | Native spend-statement checker (C1–C9) = executable circuit spec; `check_spend_statement` is what the real circuit must enforce |
 | `circuit-spend` | WP6a/6b/6d | ✅ circuit / 🔶 pipeline swap pending | Plonky3 FRI STARK over BabyBear + Poseidon2 (D1/D2/D3). WP6a gadgets (all sound + tested): Poseidon2 permutation (cross-checked vs Plonky3), depth-32 Merkle verifier (**C1**), rate-8 sponge hash (**C2/C5**), balance/range/dummy AIR (**C4/C6/C7**); plus the Poseidon2 workload + Gate-A KPI harness. **WP6b:** `spend` is the full **2-in/2-out statement (C1–C7)** in one STARK (`prove_spend`/`verify_spend`; mint/coinbase too). **WP6d:** `knockout` mutation harness asserts every constraint family is load-bearing and isolatable. **Bridge:** `StarkSpendVerifier` implements the frozen `SpendVerifier` over packed Poseidon2 digests (round-trip tested). **Remaining:** make the rest of the pipeline emit Poseidon2 digests (BLAKE3→Poseidon2 migration) to use it for real txs |
@@ -50,19 +57,18 @@ recipients exist only inside the wallets, and the public supply audit
 
 These are sequenced behind gates in the engineering plan, not overlooked:
 
-- **STARK spend circuit (WP6b/6d)** — *built and self-contained*:
-  `circuit-spend::spend` is the full uniform 2-in/2-out statement (C1–C7) as one
-  sound, tested STARK; the WP6d `knockout` harness proves each constraint family
-  is load-bearing; and `StarkSpendVerifier` already implements the frozen
-  `SpendVerifier` over packed Poseidon2 digests. The one remaining step to use
-  it for *real* transactions is the **pipeline BLAKE3→Poseidon2 migration** —
-  making `notes`/`tree`/`tx`/`state` compute Poseidon2 field-element digests
-  (decision D3) instead of BLAKE3, so the bytes in `SpendPublicInputs` are the
-  packed field digests the circuit expects. That is a deliberate, separate
-  cross-crate change (it rewrites the commitment/nullifier/anchor representation
-  and all golden vectors), not started here to keep the working pipeline green.
-  Note also the circuit's documented v0 simplifications vs. §3.3 (ownership as
-  `addr_tag == nk`, output `rho` not yet derived from the input nullifier).
+- **STARK spend circuit (WP6b/6d) — built, and now wired to the pipeline hash.**
+  `circuit-spend::spend` is the full uniform 2-in/2-out statement (C1–C7); the
+  WP6d `knockout` harness proves each family is load-bearing; `StarkSpendVerifier`
+  implements the frozen `SpendVerifier`; and `notes`/`tree` now compute the same
+  Poseidon2 digests (via `unknown-poseidon`), so a real transaction verifies end
+  to end (`tests/pipeline.rs`). Remaining items are tracked in
+  [`poseidon-migration.md`](poseidon-migration.md): reconcile the ownership model
+  for arbitrary addresses (currently `addr_tag == nk`), freeze the Poseidon2
+  constants to `specs/vectors/`, set the real `PROOF_BUCKET` + version bump, and
+  wire the wallet/node to build witnesses and use `StarkSpendVerifier` in place
+  of the dev prover. Output `rho` is also not yet derived from the input
+  nullifier (a documented v0 simplification).
 - **DAG-BFT consensus (WP11)** — the state machine already consumes a *total
   order* of transactions, which is exactly what AlephBFT/Mysticeti produce. The
   single sequencer is a stand-in for that ordering service.

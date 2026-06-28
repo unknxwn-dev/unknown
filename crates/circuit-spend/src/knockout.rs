@@ -60,8 +60,10 @@ fn two_real(
     };
     let rho0 = digest(rng);
     let rho1 = digest(rng);
-    let cm0 = air.commit(vin[0], addr0, rho0);
-    let cm1 = air.commit(vin[1], nk, rho1);
+    let rs0 = digest(rng);
+    let rs1 = digest(rng);
+    let cm0 = air.commit(vin[0], addr0, rho0, rs0);
+    let cm1 = air.commit(vin[1], nk, rho1, rs1);
     let shared: Vec<_> = (1..DEPTH)
         .map(|_| (digest(rng), rng.sample::<bool, _>(StandardUniform)))
         .collect();
@@ -75,6 +77,7 @@ fn two_real(
             value: vin[0],
             addr_tag: addr0,
             rho: rho0,
+            rseed: rs0,
             path: path0,
             dummy: false,
         },
@@ -82,6 +85,7 @@ fn two_real(
             value: vin[1],
             addr_tag: nk,
             rho: rho1,
+            rseed: rs1,
             path: path1,
             dummy: false,
         },
@@ -91,11 +95,13 @@ fn two_real(
             value: vout[0],
             addr_tag: digest(rng),
             rho: digest(rng),
+            rseed: digest(rng),
         },
         OutputNote {
             value: vout[1],
             addr_tag: digest(rng),
             rho: digest(rng),
+            rseed: digest(rng),
         },
     ];
     air.generate_trace(nk, &inputs, &outputs, mint)
@@ -114,6 +120,7 @@ fn dummy_with_value(air: &SpendAir<Val>, rng: &mut SmallRng) -> (RowMajorMatrix<
             value: 5,
             addr_tag: nk,
             rho: digest(rng),
+            rseed: digest(rng),
             path: path0,
             dummy: true,
         },
@@ -121,6 +128,7 @@ fn dummy_with_value(air: &SpendAir<Val>, rng: &mut SmallRng) -> (RowMajorMatrix<
             value: 395,
             addr_tag: nk,
             rho: digest(rng),
+            rseed: digest(rng),
             path: path1,
             dummy: false,
         },
@@ -130,11 +138,13 @@ fn dummy_with_value(air: &SpendAir<Val>, rng: &mut SmallRng) -> (RowMajorMatrix<
             value: 200,
             addr_tag: digest(rng),
             rho: digest(rng),
+            rseed: digest(rng),
         },
         OutputNote {
             value: 200,
             addr_tag: digest(rng),
             rho: digest(rng),
+            rseed: digest(rng),
         },
     ];
     air.generate_trace(nk, &inputs, &outputs, 0)
