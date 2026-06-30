@@ -7,6 +7,7 @@ license.workspace = true
 [dependencies]
 unknown-interfaces.workspace = true
 unknown-primitives.workspace = true
+unknown-poseidon.workspace = true
 zeroize.workspace = true
 ml-kem.workspace = true
 x25519-dalek.workspace = true
