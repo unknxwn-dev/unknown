@@ -17,4 +17,16 @@ Proof system: Plonky3 FRI STARK over BabyBear, Poseidon2 width-16 (decisions D1/
 - **Proof ≤ 250 KB.** See the proof-size column; the compact profile trades a higher blowup for fewer queries and a smaller proof.
 - **Verify ≥ 500 /s/core.** See the verify column. Single-proof verify is below this on one core; the plan's `verify_batch` (FRI batched across a checkpoint's transactions) is how the target is met at the node.
 
-These cover the *measured* halves (hashing cost + sound arithmetic). The fused spend circuit (binding hashes to the public nullifiers/commitments and Merkle root) will add glue rows but is still Poseidon2-dominated, so these numbers are the load-bearing estimate.
+These cover the *measured* halves (hashing cost + sound arithmetic). The fused spend circuit (binding hashes to the public nullifiers/commitments and Merkle root) is also Poseidon2-dominated — but how its perms are *laid out* turns out to dominate proof size; see below.
+
+## Fused-circuit proof size (finding)
+
+The `StarkSpendVerifier` proves the *fused* `circuit-spend::spend` AIR (all of C1–C7 in one statement). Measured fused proof, COMPACT-SHORT profile:
+
+| Circuit | Layout | Trace (rows × cols) | Proof |
+|---|---|---|---:|
+| fused spend (C1–C7) | **wide single-row** | 16 × ~22k | **5.39 MB** |
+
+This **fails the ≤ 250 KB Gate-A KPI by ~20×.** Root cause is the *layout*, not the proof system: the fused AIR packs all **86 Poseidon2 permutations into the columns of a single row** (`PERMS_PER_IN = CM_BLOCKS + NF_BLOCKS + TAG_BLOCKS + DEPTH = 4+2+1+32 = 39` per input × 2 inputs, plus 8 output-commitment perms), each perm `WIDTH_COLS` wide, then replicates that one row 16× to reach FRI's minimum height. FRI commits to and opens *every* column, so proof size scales with the ~22k-column width. The component table above stays small precisely because each component is one Poseidon2 AIR of fixed modest width.
+
+**Remediation (tracked):** rebuild the spend AIR in the standard **tall** layout — one permutation per *row* (≈86 perms → ≈128 rows after power-of-two padding) with ≈ `WIDTH_COLS` columns, plus transition constraints to chain sponge capacity / Merkle nodes across consecutive rows, selector columns to type each row, and binding of specific rows to the public values. That moves the work from columns (every one opened) to rows (logarithmic FRI cost), which is how the component proofs already stay ≈ 130 KiB. Until that lands, `PROOF_BUCKET` is **not** bumped — sizing the consensus bucket to the throwaway 5.4 MB wide-layout value would be churn.

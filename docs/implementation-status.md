@@ -64,12 +64,15 @@ These are sequenced behind gates in the engineering plan, not overlooked:
   Poseidon2 digests (via `unknown-poseidon`), so a real transaction verifies end
   to end (`tests/pipeline.rs`), including the ownership model for arbitrary
   addresses: `keys` derives `addr_tag = Poseidon2(nk)` and C3 enforces it.
+  The Poseidon2 constants are frozen in `specs/vectors/poseidon2.json`.
   Remaining items are tracked in
-  [`poseidon-migration.md`](poseidon-migration.md): freeze the Poseidon2
-  constants to `specs/vectors/`, set the real `PROOF_BUCKET` + version bump, and
-  wire the wallet/node to build witnesses and use `StarkSpendVerifier` in place
-  of the dev prover. Output `rho` is also not yet derived from the input
-  nullifier (a documented v0 simplification).
+  [`poseidon-migration.md`](poseidon-migration.md). The load-bearing one: the
+  fused proof is currently **5.4 MB** (20× over the 250 KB Gate-A KPI) because
+  the AIR uses a wide single-row layout that opens ~22k FRI columns; it must be
+  rebuilt in the standard tall (one-perm-per-row) layout before `PROOF_BUCKET`
+  is set and the wallet/node are wired to `StarkSpendVerifier`. See
+  [`gate-a-report.md`](gate-a-report.md). Output `rho` is also not yet derived
+  from the input nullifier (a documented v0 simplification).
 - **DAG-BFT consensus (WP11)** — the state machine already consumes a *total
   order* of transactions, which is exactly what AlephBFT/Mysticeti produce. The
   single sequencer is a stand-in for that ordering service.

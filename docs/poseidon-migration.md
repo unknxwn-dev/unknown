@@ -62,8 +62,13 @@ Poseidon2 reference (plan WP1) is the remaining hardening.
    second, non-Plonky3 Poseidon2 implementation (plan WP1) before mainnet.
 2. **Version byte + golden vectors.** Bump the note/tx format version and
    regenerate frozen vectors (this is a consensus break, by design).
-3. **`PROOF_BUCKET`.** Set the real STARK proof bucket (≈150 KiB) in
+3. **Tall-layout refactor + `PROOF_BUCKET`.** The fused spend proof is
+   currently **5.4 MB** — 20× over the 250 KB Gate-A KPI — because the AIR uses
+   a wide single-row layout that opens ~22k FRI columns (see
+   `docs/gate-a-report.md`). Rebuild the AIR in the standard tall layout (one
+   Poseidon2 perm per row), *then* set the real proof bucket (≈150 KiB) in
    `interfaces` and bump the transaction version (currently the dev value 192).
+   The bucket is deliberately left unbumped until the layout is fixed.
 4. **Wallet/state wiring.** Have the wallet build the circuit witness from its
    notes + tree witnesses (the `tests/pipeline.rs` flow) and have the node use
    `StarkSpendVerifier` in place of the dev verifier once 1–4 land.
