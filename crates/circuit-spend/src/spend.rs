@@ -5,7 +5,9 @@
 //! - **C1** each *real* input commitment is a depth-32 Merkle leaf to the
 //!   public anchor root (bypassed for dummies, **C4**);
 //! - **C2** each input nullifier `nf = H(nk ‖ rho)`, bound to a public value;
-//! - **C3** ownership: every input's `addr_tag` equals the spender key `nk`;
+//! - **C3** ownership: every input's `addr_tag` is `Poseidon2(nk)` for the
+//!   spender's nullifier key `nk` (matching `unknown_keys`), so the address
+//!   commits to `nk` without revealing it;
 //! - **C4** a dummy input carries zero value and skips membership;
 //! - **C6** every value `< 2^62` (8 byte-limbs, bit-decomposed);
 //! - **C7** balance `Σ v_in + mint = Σ v_out` over the byte-limbs, with the
@@ -56,7 +58,9 @@ pub const ROWS: usize = 16;
 
 // ----- column layout -------------------------------------------------------
 
-const PERMS_PER_IN: usize = CM_BLOCKS + NF_BLOCKS + DEPTH; // 37
+/// Address-tag preimage blocks: nk (so addr_tag = Poseidon2(nk), C3).
+const TAG_BLOCKS: usize = 1;
+const PERMS_PER_IN: usize = CM_BLOCKS + NF_BLOCKS + TAG_BLOCKS + DEPTH;
 const IN_COLS: usize = PERMS_PER_IN * WIDTH_COLS;
 const OUT_COLS: usize = CM_BLOCKS * WIDTH_COLS;
 const PERMS_END: usize = N_IN * IN_COLS + N_OUT * OUT_COLS;
@@ -80,8 +84,15 @@ const fn in_cm_block(i: usize, b: usize) -> usize {
 const fn in_nf_block(i: usize, b: usize) -> usize {
     in_base(i) + (CM_BLOCKS + b) * WIDTH_COLS
 }
+/// The single address-tag sponge block for input `i` (hashes nk).
+const fn in_tag_block(i: usize) -> usize {
+    in_base(i) + (CM_BLOCKS + NF_BLOCKS) * WIDTH_COLS
+}
+const fn in_tag_out(i: usize) -> usize {
+    in_tag_block(i) + output_off()
+}
 const fn in_merkle(i: usize, l: usize) -> usize {
-    in_base(i) + (CM_BLOCKS + NF_BLOCKS + l) * WIDTH_COLS
+    in_base(i) + (CM_BLOCKS + NF_BLOCKS + TAG_BLOCKS + l) * WIDTH_COLS
 }
 const fn in_cm_out(i: usize) -> usize {
     in_cm_block(i, CM_BLOCKS - 1) + output_off()
@@ -128,7 +139,8 @@ const fn val_byte(v: usize, j: usize) -> usize {
 /// One Merkle path step (sibling digest, direction bit).
 pub type PathStep = ([Val; DIGEST], bool);
 
-/// Witness for one input note. For an honestly-owned note `addr_tag == nk`.
+/// Witness for one input note. For an honestly-owned note
+/// `addr_tag == Poseidon2(nk)`.
 #[derive(Clone)]
 pub struct InputNote {
     pub value: u64,
@@ -270,6 +282,15 @@ impl SpendAir<Val> {
         state[0..DIGEST].try_into().unwrap()
     }
 
+    /// Host: address tag `Poseidon2(nk)` (1-block sponge) — equals
+    /// `unknown_keys::SpendingKey::addr_tag` for the same `nk`.
+    pub fn tag(&self, nk: [Val; RATE]) -> [Val; DIGEST] {
+        let mut state = [Val::ZERO; WIDTH];
+        state[0..RATE].copy_from_slice(&nk);
+        let o = self.perm.permute(state);
+        o[0..DIGEST].try_into().unwrap()
+    }
+
     /// Host: 2-to-1 Merkle compression.
     pub fn compress(&self, a: [Val; DIGEST], b: [Val; DIGEST]) -> [Val; DIGEST] {
         let out = self.perm.permute(Self::join(a, b));
@@ -333,7 +354,7 @@ impl SpendAir<Val> {
 
         for (i, note) in inputs.iter().enumerate() {
             let value = Self::value_block(note.value);
-            // cm = H(value ‖ addr_tag ‖ rho ‖ rseed); honest notes have addr_tag = nk.
+            // cm = H(value ‖ addr_tag ‖ rho ‖ rseed); addr_tag = Poseidon2(nk).
             let cm = self.fill_sponge(
                 &[value, note.addr_tag, note.rho, note.rseed],
                 &mut row,
@@ -342,6 +363,9 @@ impl SpendAir<Val> {
             // nf = H(nk ‖ rho)
             let nf = self.fill_sponge(&[nk, note.rho], &mut row, in_nf_block(i, 0));
             nullifiers[i] = nf;
+            // addr_tag = H(nk) (C3): fill the tag sponge; the digest is
+            // recomputed/bound in-circuit, so the return value is unused here.
+            let _ = self.fill_sponge(&[nk], &mut row, in_tag_block(i));
             let root = self.fill_merkle(i, cm, &note.path, &mut row);
             if !note.dummy {
                 anchor = root; // all real inputs share the anchor
@@ -466,17 +490,25 @@ impl<AB: AirBuilder> Air<AB> for SpendAir<AB::F> {
         for i in 0..N_IN {
             eval_sponge(&self.perm, builder, local, in_base(i), CM_BLOCKS);
             eval_sponge(&self.perm, builder, local, in_nf_block(i, 0), NF_BLOCKS);
+            // Tag sponge: addr_tag = Poseidon2(nk).
+            eval_sponge(&self.perm, builder, local, in_tag_block(i), TAG_BLOCKS);
 
-            // C3 ownership + shared rho.
             let addr_tag = in_cm_block(i, 1) + input_off();
             let nk = in_nf_block(i, 0) + input_off();
             let cm_rho = in_cm_block(i, 2) + input_off();
             let nf_rho = in_nf_block(i, 1) + input_off();
+            let tag_in = in_tag_block(i) + input_off();
             for j in 0..RATE {
-                if self.knockout != Knockout::C3 {
-                    builder.assert_eq(local[addr_tag + j], local[nk + j]); // C3
+                // The tag sponge hashes the same nk the nullifier uses.
+                builder.assert_eq(local[tag_in + j], local[nk + j]);
+                // rho is shared between the commitment and nullifier.
+                builder.assert_eq(local[cm_rho + j], local[nf_rho + j]);
+            }
+            // C3 ownership: the note's addr_tag is Poseidon2(nk).
+            if self.knockout != Knockout::C3 {
+                for j in 0..DIGEST {
+                    builder.assert_eq(local[addr_tag + j], local[in_tag_out(i) + j]);
                 }
-                builder.assert_eq(local[cm_rho + j], local[nf_rho + j]); // shared rho
             }
             // For input i > 0 the keys must match input 0's (one spender).
             if i > 0 {
@@ -648,9 +680,10 @@ mod tests {
         let rs0 = digest(&mut rng);
         let rs1 = digest(&mut rng);
 
-        // The two input commitments (addr_tag = nk for ownership).
-        let cm0 = air.commit(vin[0], nk, rho0, rs0);
-        let cm1 = air.commit(vin[1], nk, rho1, rs1);
+        // addr_tag = Poseidon2(nk) is the recipient tag bound into the note.
+        let tag = air.tag(nk);
+        let cm0 = air.commit(vin[0], tag, rho0, rs0);
+        let cm1 = air.commit(vin[1], tag, rho1, rs1);
 
         // Level 0: the inputs are each other's siblings (leaf0 left, leaf1
         // right); levels 1.. share the same siblings, so both reach one root.
@@ -665,7 +698,7 @@ mod tests {
         let inputs = [
             InputNote {
                 value: vin[0],
-                addr_tag: nk,
+                addr_tag: tag,
                 rho: rho0,
                 rseed: rs0,
                 path: path0,
@@ -673,7 +706,7 @@ mod tests {
             },
             InputNote {
                 value: vin[1],
-                addr_tag: nk,
+                addr_tag: tag,
                 rho: rho1,
                 rseed: rs1,
                 path: path1,
@@ -714,10 +747,11 @@ mod tests {
         let dpath = |rng: &mut SmallRng| -> Vec<PathStep> {
             (0..DEPTH).map(|_| (digest(rng), false)).collect()
         };
+        let tag = air.tag(nk);
         let inputs = [
             InputNote {
                 value: 0,
-                addr_tag: nk,
+                addr_tag: tag,
                 rho: digest(&mut rng),
                 rseed: digest(&mut rng),
                 path: dpath(&mut rng),
@@ -725,7 +759,7 @@ mod tests {
             },
             InputNote {
                 value: 0,
-                addr_tag: nk,
+                addr_tag: tag,
                 rho: digest(&mut rng),
                 rseed: digest(&mut rng),
                 path: dpath(&mut rng),

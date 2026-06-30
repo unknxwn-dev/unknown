@@ -133,8 +133,9 @@ mod tests {
         let rho1 = digest(&mut rng);
         let rs0 = digest(&mut rng);
         let rs1 = digest(&mut rng);
-        let cm0 = air.commit(600, nk, rho0, rs0);
-        let cm1 = air.commit(400, nk, rho1, rs1);
+        let tag = air.tag(nk);
+        let cm0 = air.commit(600, tag, rho0, rs0);
+        let cm1 = air.commit(400, tag, rho1, rs1);
         let shared: Vec<_> = (1..TREE_DEPTH)
             .map(|_| (digest(&mut rng), rng.sample::<bool, _>(StandardUniform)))
             .collect();
@@ -145,7 +146,7 @@ mod tests {
         let inputs = [
             InputNote {
                 value: 600,
-                addr_tag: nk,
+                addr_tag: tag,
                 rho: rho0,
                 rseed: rs0,
                 path: p0,
@@ -153,7 +154,7 @@ mod tests {
             },
             InputNote {
                 value: 400,
-                addr_tag: nk,
+                addr_tag: tag,
                 rho: rho1,
                 rseed: rs1,
                 path: p1,

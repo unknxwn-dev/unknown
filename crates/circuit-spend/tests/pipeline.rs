@@ -21,6 +21,12 @@ fn map(b: [u8; 32]) -> [Val; 8] {
     poseidon::bytes_to_field(b)
 }
 
+/// Recipient tag for a nullifier key: `addr_tag = Poseidon2(nk)`, matching
+/// `unknown_keys::SpendingKey::addr_tag`.
+fn addr_tag_for(nk: [u8; 32]) -> [u8; 32] {
+    poseidon::pack(poseidon::sponge(&[poseidon::bytes_to_field(nk)]))
+}
+
 fn to_path(w: &MerklePath) -> Vec<PathStep> {
     (0..TREE_DEPTH)
         .map(|l| (poseidon::unpack(w.siblings[l]), (w.position >> l) & 1 == 1))
@@ -29,17 +35,19 @@ fn to_path(w: &MerklePath) -> Vec<PathStep> {
 
 #[test]
 fn real_pipeline_tx_verifies_through_stark_spend_verifier() {
-    // A real spender: addr_tag == nk (the circuit's ownership model).
+    // A real spender: the notes are addressed to addr_tag = Poseidon2(nk),
+    // exactly as unknown_keys derives it; ownership (C3) proves knowledge of nk.
     let nk = [7u8; 32];
+    let tag = addr_tag_for(nk);
     let in0 = Note {
         value: 600,
-        addr_tag: nk,
+        addr_tag: tag,
         rho: [11u8; 32],
         rseed: [12u8; 32],
     };
     let in1 = Note {
         value: 400,
-        addr_tag: nk,
+        addr_tag: tag,
         rho: [13u8; 32],
         rseed: [14u8; 32],
     };

@@ -51,19 +51,21 @@ fn two_real(
     addr0_bad: bool,
 ) -> (RowMajorMatrix<Val>, SpendPublic) {
     let nk = digest(rng);
+    let honest_tag = air.tag(nk);
     let addr0 = if addr0_bad {
-        let mut a = nk;
+        // addr_tag != Poseidon2(nk): violates only C3.
+        let mut a = honest_tag;
         a[0] += Val::ONE;
         a
     } else {
-        nk
+        honest_tag
     };
     let rho0 = digest(rng);
     let rho1 = digest(rng);
     let rs0 = digest(rng);
     let rs1 = digest(rng);
     let cm0 = air.commit(vin[0], addr0, rho0, rs0);
-    let cm1 = air.commit(vin[1], nk, rho1, rs1);
+    let cm1 = air.commit(vin[1], honest_tag, rho1, rs1);
     let shared: Vec<_> = (1..DEPTH)
         .map(|_| (digest(rng), rng.sample::<bool, _>(StandardUniform)))
         .collect();
@@ -83,7 +85,7 @@ fn two_real(
         },
         InputNote {
             value: vin[1],
-            addr_tag: nk,
+            addr_tag: honest_tag,
             rho: rho1,
             rseed: rs1,
             path: path1,
@@ -111,6 +113,7 @@ fn two_real(
 /// Balanced: 5 (dummy) + 395 (real) = 200 + 200.
 fn dummy_with_value(air: &SpendAir<Val>, rng: &mut SmallRng) -> (RowMajorMatrix<Val>, SpendPublic) {
     let nk = digest(rng);
+    let tag = air.tag(nk);
     let path0: Vec<_> = (0..DEPTH).map(|_| (digest(rng), false)).collect();
     let path1: Vec<_> = (0..DEPTH)
         .map(|_| (digest(rng), rng.sample::<bool, _>(StandardUniform)))
@@ -118,7 +121,7 @@ fn dummy_with_value(air: &SpendAir<Val>, rng: &mut SmallRng) -> (RowMajorMatrix<
     let inputs = [
         InputNote {
             value: 5,
-            addr_tag: nk,
+            addr_tag: tag,
             rho: digest(rng),
             rseed: digest(rng),
             path: path0,
@@ -126,7 +129,7 @@ fn dummy_with_value(air: &SpendAir<Val>, rng: &mut SmallRng) -> (RowMajorMatrix<
         },
         InputNote {
             value: 395,
-            addr_tag: nk,
+            addr_tag: tag,
             rho: digest(rng),
             rseed: digest(rng),
             path: path1,

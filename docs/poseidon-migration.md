@@ -35,20 +35,24 @@ hash-agnostic and unchanged; the devnet demo and supply audit still pass. `rho`
 derivation, dummy-note entropy, the tx binding digest, and key derivation
 remain domain-separated BLAKE3 (they never appear in-circuit as preimages).
 
+## Ownership model (done)
+
+`keys` derives `addr_tag = Poseidon2(nk)` and the circuit's C3 enforces exactly
+that: a per-input tag sponge hashes the witness `nk` and binds the result to the
+note's `addr_tag`, while the nullifier uses the same `nk`. So real
+`unknown_keys`-style notes (arbitrary addresses) verify — the end-to-end test
+builds inputs with `addr_tag = Poseidon2(nk)` and they pass. The old v0
+`addr_tag == nk` shortcut is gone (it would have published `nk`).
+
 ## Remaining
 
-1. **Ownership model.** The circuit enforces `addr_tag == nk` (C3). The
-   end-to-end test uses notes built that way. To support arbitrary addresses,
-   reconcile `keys`' `addr_tag` derivation with the circuit (either make the
-   address tag equal the nullifier key, or extend C3 to check the real
-   derivation `addr_tag = H(ask, nk)` in-circuit). This is a design decision.
-2. **Freeze the constants.** `unknown-poseidon::constants()` derives from a
+1. **Freeze the constants.** `unknown-poseidon::constants()` derives from a
    fixed seed; freeze the 141 field values into `specs/vectors/poseidon2.json`
    and cross-check against a second reference (plan WP1), then load from there.
-3. **Version byte + golden vectors.** Bump the note/tx format version and
+2. **Version byte + golden vectors.** Bump the note/tx format version and
    regenerate frozen vectors (this is a consensus break, by design).
-4. **`PROOF_BUCKET`.** Set the real STARK proof bucket (≈150 KiB) in
+3. **`PROOF_BUCKET`.** Set the real STARK proof bucket (≈150 KiB) in
    `interfaces` and bump the transaction version (currently the dev value 192).
-5. **Wallet/state wiring.** Have the wallet build the circuit witness from its
+4. **Wallet/state wiring.** Have the wallet build the circuit witness from its
    notes + tree witnesses (the `tests/pipeline.rs` flow) and have the node use
    `StarkSpendVerifier` in place of the dev verifier once 1–4 land.

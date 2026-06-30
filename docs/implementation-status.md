@@ -62,9 +62,10 @@ These are sequenced behind gates in the engineering plan, not overlooked:
   WP6d `knockout` harness proves each family is load-bearing; `StarkSpendVerifier`
   implements the frozen `SpendVerifier`; and `notes`/`tree` now compute the same
   Poseidon2 digests (via `unknown-poseidon`), so a real transaction verifies end
-  to end (`tests/pipeline.rs`). Remaining items are tracked in
-  [`poseidon-migration.md`](poseidon-migration.md): reconcile the ownership model
-  for arbitrary addresses (currently `addr_tag == nk`), freeze the Poseidon2
+  to end (`tests/pipeline.rs`), including the ownership model for arbitrary
+  addresses: `keys` derives `addr_tag = Poseidon2(nk)` and C3 enforces it.
+  Remaining items are tracked in
+  [`poseidon-migration.md`](poseidon-migration.md): freeze the Poseidon2
   constants to `specs/vectors/`, set the real `PROOF_BUCKET` + version bump, and
   wire the wallet/node to build witnesses and use `StarkSpendVerifier` in place
   of the dev prover. Output `rho` is also not yet derived from the input
