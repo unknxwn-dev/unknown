@@ -1486,6 +1486,8 @@ dependencies = [
  "p3-poseidon2",
  "p3-poseidon2-air",
  "rand 0.10.1",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

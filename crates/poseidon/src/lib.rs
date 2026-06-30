@@ -12,9 +12,13 @@
 //! 32-byte material (e.g. a key-derived `addr_tag`) maps to field elements via
 //! the same chunk decoding (reducing mod p as needed); see [`bytes_to_field`].
 //!
-//! Round constants are derived deterministically from a fixed seed. Production
-//! must freeze them into `specs/vectors/poseidon2.json` (plan WP1); centralising
-//! generation here keeps the circuit and pipeline in lock-step until then.
+//! Round constants are **frozen** in [`specs/vectors/poseidon2.json`] and loaded
+//! from there (plan WP1), so they are an auditable spec artifact rather than a
+//! runtime accident. They were generated once from a fixed seed
+//! ([`derive_from_seed`]); a test asserts the frozen file still equals the
+//! generator, so the JSON and the generator can never silently diverge.
+//!
+//! [`specs/vectors/poseidon2.json`]: ../../../specs/vectors/poseidon2.json
 
 use std::sync::OnceLock;
 
@@ -28,6 +32,7 @@ use p3_poseidon2::GenericPoseidon2LinearLayers;
 use rand::distr::StandardUniform;
 use rand::rngs::SmallRng;
 use rand::{RngExt, SeedableRng};
+use serde::{Deserialize, Serialize};
 
 /// Protocol field.
 pub type F = BabyBear;
@@ -44,22 +49,99 @@ pub const PARTIAL: usize = BABYBEAR_POSEIDON2_PARTIAL_ROUNDS_16;
 const SBOX: u64 = 7;
 const SEED: u64 = 42;
 
+/// The frozen round-constant spec, embedded at build time.
+const FROZEN_JSON: &str = include_str!("../../../specs/vectors/poseidon2.json");
+
 /// Poseidon2 round constants (the begin/partial/end split the AIR consumes).
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Constants {
     pub begin: [[F; WIDTH]; HALF_FULL],
     pub partial: [F; PARTIAL],
     pub end: [[F; WIDTH]; HALF_FULL],
 }
 
-/// Freshly derive the frozen round constants from the fixed seed.
-pub fn constants() -> Constants {
+/// On-disk shape of `specs/vectors/poseidon2.json`: metadata (for human/auditor
+/// review) plus the three round-constant groups as canonical `u32` field values.
+#[derive(Serialize, Deserialize)]
+pub struct ConstantsSpec {
+    pub hash: String,
+    pub field: String,
+    pub width: usize,
+    pub sbox: u64,
+    pub half_full_rounds: usize,
+    pub partial_rounds: usize,
+    /// How the values were produced, so the spec is reproducible.
+    pub generator: String,
+    pub begin: Vec<Vec<u32>>,
+    pub partial: Vec<u32>,
+    pub end: Vec<Vec<u32>>,
+}
+
+fn rows_to_array(rows: &[Vec<u32>]) -> [[F; WIDTH]; HALF_FULL] {
+    assert_eq!(
+        rows.len(),
+        HALF_FULL,
+        "frozen constants: wrong full-round count"
+    );
+    core::array::from_fn(|i| {
+        assert_eq!(rows[i].len(), WIDTH, "frozen constants: wrong width");
+        core::array::from_fn(|j| F::from_int(rows[i][j]))
+    })
+}
+
+impl ConstantsSpec {
+    /// Reconstruct the typed [`Constants`] from the spec.
+    pub fn to_constants(&self) -> Constants {
+        assert_eq!(
+            self.partial.len(),
+            PARTIAL,
+            "frozen constants: wrong partial-round count"
+        );
+        Constants {
+            begin: rows_to_array(&self.begin),
+            partial: core::array::from_fn(|i| F::from_int(self.partial[i])),
+            end: rows_to_array(&self.end),
+        }
+    }
+
+    /// Build a spec from typed [`Constants`] (used by the generator example).
+    pub fn from_constants(c: &Constants) -> Self {
+        let rows = |g: &[[F; WIDTH]; HALF_FULL]| {
+            g.iter()
+                .map(|r| r.iter().map(|v| v.as_canonical_u32()).collect())
+                .collect()
+        };
+        Self {
+            hash: "Poseidon2".to_string(),
+            field: "BabyBear".to_string(),
+            width: WIDTH,
+            sbox: SBOX,
+            half_full_rounds: HALF_FULL,
+            partial_rounds: PARTIAL,
+            generator: format!("SmallRng(seed={SEED}) StandardUniform, in begin/partial/end order"),
+            begin: rows(&c.begin),
+            partial: c.partial.iter().map(|v| v.as_canonical_u32()).collect(),
+            end: rows(&c.end),
+        }
+    }
+}
+
+/// Derive the round constants from the fixed seed. This is the *generator* of
+/// record; the frozen JSON is its pinned output (see [`constants`]).
+pub fn derive_from_seed() -> Constants {
     let mut rng = SmallRng::seed_from_u64(SEED);
     Constants {
         begin: core::array::from_fn(|_| core::array::from_fn(|_| rng.sample(StandardUniform))),
         partial: core::array::from_fn(|_| rng.sample(StandardUniform)),
         end: core::array::from_fn(|_| core::array::from_fn(|_| rng.sample(StandardUniform))),
     }
+}
+
+/// The frozen protocol round constants, loaded from `specs/vectors/poseidon2.json`.
+pub fn constants() -> Constants {
+    let spec: ConstantsSpec =
+        serde_json::from_str(FROZEN_JSON).expect("specs/vectors/poseidon2.json is valid");
+    spec.to_constants()
 }
 
 fn cached() -> &'static Constants {
@@ -171,6 +253,56 @@ mod tests {
     fn pack_round_trips() {
         let d = sponge(&[value_limbs(123), [F::ONE; RATE]]);
         assert_eq!(unpack(pack(d)), d);
+    }
+
+    /// The committed `specs/vectors/poseidon2.json` must equal the seed
+    /// generator of record. If this fails, regenerate the spec with
+    /// `cargo run -p unknown-poseidon --example freeze_constants`.
+    #[test]
+    fn frozen_constants_match_generator() {
+        assert_eq!(
+            constants(),
+            derive_from_seed(),
+            "specs/vectors/poseidon2.json has drifted from the seed generator"
+        );
+    }
+
+    /// The spec round-trips through its on-disk form (parse → typed → spec).
+    #[test]
+    fn spec_round_trips() {
+        let spec = ConstantsSpec::from_constants(&derive_from_seed());
+        let json = serde_json::to_string(&spec).unwrap();
+        let back: ConstantsSpec = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.to_constants(), derive_from_seed());
+    }
+
+    /// Golden digests pin the protocol hash. If Poseidon2 constants or the
+    /// permutation ever change, these break — a deliberate consensus tripwire.
+    #[test]
+    fn golden_vectors() {
+        // A two-block sponge over fixed value-limbs.
+        let d = sponge(&[value_limbs(1), value_limbs(2)]);
+        let canon: [u32; DIGEST] = core::array::from_fn(|i| d[i].as_canonical_u32());
+        assert_eq!(
+            canon,
+            [
+                1972431003, 1230026623, 3969181, 165564308, 1122360059, 1275594131, 912807871,
+                1396653160
+            ],
+            "sponge golden vector changed (constants or permutation drifted)"
+        );
+
+        // 2-to-1 compression of two distinct digests.
+        let c = compress(sponge(&[value_limbs(3)]), sponge(&[value_limbs(4)]));
+        let canon_c: [u32; DIGEST] = core::array::from_fn(|i| c[i].as_canonical_u32());
+        assert_eq!(
+            canon_c,
+            [
+                342235067, 96420216, 1041534851, 1739587423, 443073354, 1984062978, 720866480,
+                984897615
+            ],
+            "compress golden vector changed (constants or permutation drifted)"
+        );
     }
 
     #[test]

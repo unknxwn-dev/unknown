@@ -44,11 +44,22 @@ note's `addr_tag`, while the nullifier uses the same `nk`. So real
 builds inputs with `addr_tag = Poseidon2(nk)` and they pass. The old v0
 `addr_tag == nk` shortcut is gone (it would have published `nk`).
 
+## Constants frozen (done)
+
+The 141 round constants are frozen in `specs/vectors/poseidon2.json` and loaded
+from there by `unknown-poseidon::constants()` (no longer seed-derived at
+runtime). The seed generator of record survives as `derive_from_seed()`, the
+`freeze_constants` example regenerates the file, and the
+`frozen_constants_match_generator` test fails if the committed file ever drifts
+from the generator. `golden_vectors` pins concrete sponge/compress digests as a
+consensus tripwire. The constants permute identically to before (the circuit and
+pipeline are byte-for-byte unchanged); cross-checking against an *independent*
+Poseidon2 reference (plan WP1) is the remaining hardening.
+
 ## Remaining
 
-1. **Freeze the constants.** `unknown-poseidon::constants()` derives from a
-   fixed seed; freeze the 141 field values into `specs/vectors/poseidon2.json`
-   and cross-check against a second reference (plan WP1), then load from there.
+1. **Independent constant cross-check.** Verify `poseidon2.json` against a
+   second, non-Plonky3 Poseidon2 implementation (plan WP1) before mainnet.
 2. **Version byte + golden vectors.** Bump the note/tx format version and
    regenerate frozen vectors (this is a consensus break, by design).
 3. **`PROOF_BUCKET`.** Set the real STARK proof bucket (≈150 KiB) in
