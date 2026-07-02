@@ -20,10 +20,12 @@ pub const MAX_MONEY: u64 = 1 << 62;
 pub const TX_INPUTS: usize = 2;
 pub const TX_OUTPUTS: usize = 2;
 
-/// Fixed proof bucket size (decision D9 uniformity). The dev prover pads its
-/// 32-byte tag to this; the real STARK bucket is set at Gate A and bumps the
-/// transaction version.
-pub const PROOF_BUCKET: usize = 192;
+/// Fixed proof bucket size (decision D9 uniformity): 192 KiB, sized for the
+/// tall-layout STARK spend proof (~185.4 KB measured at Gate A, COMPACT FRI
+/// profile — see docs/gate-a-report.md) plus headroom for encoding jitter.
+/// Every transaction carries exactly this many proof bytes, zero-padded.
+/// Changing it is a consensus break and bumps the transaction version.
+pub const PROOF_BUCKET: usize = 192 * 1024;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct Commitment(pub [u8; 32]);

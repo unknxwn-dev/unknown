@@ -56,19 +56,25 @@ consensus tripwire. The constants permute identically to before (the circuit and
 pipeline are byte-for-byte unchanged); cross-checking against an *independent*
 Poseidon2 reference (plan WP1) is the remaining hardening.
 
+## Tall layout + `PROOF_BUCKET` (done)
+
+The 5.4 MB wide-layout proof problem is fixed: `circuit-spend::tall_spend`
+proves the same C1–C7 statement at **185.4 KB** (one Poseidon2 perm per row;
+see `docs/gate-a-report.md`), and the WP6d knockout harness runs the full
+fault matrix against both layouts, proving they enforce the same statement.
+`StarkSpendVerifier` and `prove_to_interface` now use the tall circuit (the
+end-to-end pipeline test proves ~8× faster too). `PROOF_BUCKET` is the real
+**192 KiB** STARK bucket and the wire format is **`TX_VERSION = 2`** (v1 is
+rejected — a consensus break, by design).
+
 ## Remaining
 
 1. **Independent constant cross-check.** Verify `poseidon2.json` against a
    second, non-Plonky3 Poseidon2 implementation (plan WP1) before mainnet.
-2. **Version byte + golden vectors.** Bump the note/tx format version and
-   regenerate frozen vectors (this is a consensus break, by design).
-3. **Tall-layout refactor + `PROOF_BUCKET`.** The fused spend proof is
-   currently **5.4 MB** — 20× over the 250 KB Gate-A KPI — because the AIR uses
-   a wide single-row layout that opens ~22k FRI columns (see
-   `docs/gate-a-report.md`). Rebuild the AIR in the standard tall layout (one
-   Poseidon2 perm per row), *then* set the real proof bucket (≈150 KiB) in
-   `interfaces` and bump the transaction version (currently the dev value 192).
-   The bucket is deliberately left unbumped until the layout is fixed.
-4. **Wallet/state wiring.** Have the wallet build the circuit witness from its
+2. **Golden vectors.** Regenerate frozen tx/note vectors for the v2 format.
+3. **Wallet/state wiring.** Have the wallet build the circuit witness from its
    notes + tree witnesses (the `tests/pipeline.rs` flow) and have the node use
-   `StarkSpendVerifier` in place of the dev verifier once 1–4 land.
+   `StarkSpendVerifier` in place of the dev verifier.
+4. **Retire the wide `spend.rs`** once nothing but the knockout cross-check
+   uses it (it currently serves as the reference implementation the tall
+   circuit is checked against).

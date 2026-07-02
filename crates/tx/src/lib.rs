@@ -15,6 +15,11 @@ use unknown_primitives::{ds, hash_parts};
 
 const POW_BODY_LEN: usize = 8;
 
+/// Wire-format version. v2: the proof bucket is the real 192 KiB tall-layout
+/// STARK bucket (v1 carried the 192-byte dev-prover bucket). Consensus break,
+/// by design — v1 encodings are rejected.
+pub const TX_VERSION: u8 = 2;
+
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct TxV1 {
     pub anchor: Anchor,
@@ -72,7 +77,7 @@ impl TxV1 {
 
     pub fn encode(&self) -> Vec<u8> {
         let mut b = Vec::with_capacity(self.encoded_len());
-        b.push(1u8); // version
+        b.push(TX_VERSION);
         b.extend_from_slice(&self.anchor.height.to_le_bytes());
         b.extend_from_slice(&self.anchor.root);
         for nf in &self.nullifiers {
@@ -113,7 +118,7 @@ impl TxV1 {
             Ok(s)
         };
 
-        if take(&mut cur, 1)?[0] != 1 {
+        if take(&mut cur, 1)?[0] != TX_VERSION {
             return Err(TxError::Malformed);
         }
         let height = u64::from_le_bytes(take(&mut cur, 8)?.try_into().unwrap());

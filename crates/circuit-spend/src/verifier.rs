@@ -15,15 +15,14 @@
 
 use p3_field::integers::QuotientMap;
 use p3_field::PrimeField32;
-use p3_uni_stark::Proof;
+use p3_uni_stark::{setup_preprocessed, Proof};
 use unknown_interfaces::{
     Anchor, Commitment, Nullifier, SpendPublicInputs, SpendVerifier, VerifyError,
 };
 
 use crate::field::{make_config, Config, FriProfile, Val};
-use crate::spend::{
-    prove_spend, verify_spend, InputNote, OutputNote, SpendAir, SpendPublic, N_IN, N_OUT,
-};
+use crate::spend::{InputNote, OutputNote, SpendPublic, N_IN, N_OUT};
+use crate::tall_spend::{prove_tall_spend, verify_tall_spend, TallSpendAir, HEIGHT};
 
 /// Pack an 8-element Poseidon2 digest into 32 bytes (4 LE bytes per element).
 pub fn pack(digest: [Val; 8]) -> [u8; 32] {
@@ -42,10 +41,12 @@ pub fn unpack(bytes: [u8; 32]) -> [Val; 8] {
     })
 }
 
-/// A `SpendVerifier` backed by the real STARK spend circuit.
+/// A `SpendVerifier` backed by the real STARK spend circuit (the tall layout,
+/// `circuit-spend::tall_spend` — ~185 KB proofs, Gate-A compliant).
 pub struct StarkSpendVerifier {
-    air: SpendAir<Val>,
+    air: TallSpendAir<Val>,
     config: Config,
+    vk: p3_uni_stark::PreprocessedVerifierKey<Config>,
 }
 
 impl Default for StarkSpendVerifier {
@@ -56,10 +57,12 @@ impl Default for StarkSpendVerifier {
 
 impl StarkSpendVerifier {
     pub fn new() -> Self {
-        Self {
-            air: SpendAir::new_seeded(),
-            config: make_config(FriProfile::COMPACT_SHORT),
-        }
+        let air = TallSpendAir::new_seeded();
+        let config = make_config(FriProfile::COMPACT);
+        let degree_bits = HEIGHT.trailing_zeros() as usize;
+        let (_pd, vk) = setup_preprocessed(&config, &air, degree_bits)
+            .expect("tall spend AIR has preprocessed columns");
+        Self { air, config, vk }
     }
 }
 
@@ -76,21 +79,22 @@ impl SpendVerifier for StarkSpendVerifier {
         };
         let proof: Proof<Config> =
             postcard::from_bytes(proof).map_err(|_| VerifyError::Malformed)?;
-        verify_spend(&self.config, &self.air, &proof, &public).map_err(|_| VerifyError::Invalid)
+        verify_tall_spend(&self.config, &self.air, &proof, &self.vk, &public)
+            .map_err(|_| VerifyError::Invalid)
     }
 }
 
 /// Prove a spend and package the result in the frozen interface types, so a
 /// caller (or test) can feed it straight to [`StarkSpendVerifier::verify`].
 pub fn prove_to_interface(
-    air: &SpendAir<Val>,
+    air: &TallSpendAir<Val>,
     nk: [Val; 8],
     inputs: &[InputNote; N_IN],
     outputs: &[OutputNote; N_OUT],
     mint: u64,
     anchor_height: u64,
 ) -> (SpendPublicInputs, Vec<u8>) {
-    let (_config, proof, public) = prove_spend(air, nk, inputs, outputs, mint);
+    let (_config, proof, _vk, public) = prove_tall_spend(air, nk, inputs, outputs, mint);
     let pi = SpendPublicInputs {
         anchor: Anchor {
             height: anchor_height,
@@ -126,16 +130,19 @@ mod tests {
     }
 
     /// Balanced two-real-input transfer in one tree (as in the spend tests).
-    fn case(air: &SpendAir<Val>, seed: u64) -> ([Val; 8], [InputNote; N_IN], [OutputNote; N_OUT]) {
+    fn case(seed: u64) -> ([Val; 8], [InputNote; N_IN], [OutputNote; N_OUT]) {
         let mut rng = SmallRng::seed_from_u64(seed);
         let nk = digest(&mut rng);
         let rho0 = digest(&mut rng);
         let rho1 = digest(&mut rng);
         let rs0 = digest(&mut rng);
         let rs1 = digest(&mut rng);
-        let tag = air.tag(nk);
-        let cm0 = air.commit(600, tag, rho0, rs0);
-        let cm1 = air.commit(400, tag, rho1, rs1);
+        let tag = unknown_poseidon::sponge(&[nk]);
+        let commit = |v: u64, rho, rs| {
+            unknown_poseidon::sponge(&[unknown_poseidon::value_limbs(v), tag, rho, rs])
+        };
+        let cm0 = commit(600, rho0, rs0);
+        let cm1 = commit(400, rho1, rs1);
         let shared: Vec<_> = (1..TREE_DEPTH)
             .map(|_| (digest(&mut rng), rng.sample::<bool, _>(StandardUniform)))
             .collect();
@@ -187,8 +194,8 @@ mod tests {
 
     #[test]
     fn interface_round_trip_verifies() {
-        let air = SpendAir::new_seeded();
-        let (nk, inputs, outputs) = case(&air, 2);
+        let air = TallSpendAir::new_seeded();
+        let (nk, inputs, outputs) = case(2);
         let (pi, proof) = prove_to_interface(&air, nk, &inputs, &outputs, 0, 0);
         StarkSpendVerifier::new()
             .verify(&pi, &proof)
@@ -197,8 +204,8 @@ mod tests {
 
     #[test]
     fn tampered_public_input_is_rejected() {
-        let air = SpendAir::new_seeded();
-        let (nk, inputs, outputs) = case(&air, 3);
+        let air = TallSpendAir::new_seeded();
+        let (nk, inputs, outputs) = case(3);
         let (mut pi, proof) = prove_to_interface(&air, nk, &inputs, &outputs, 0, 0);
         pi.anchor.root[0] ^= 0x01; // corrupt the anchor
         assert_eq!(
@@ -209,8 +216,8 @@ mod tests {
 
     #[test]
     fn malformed_proof_is_rejected() {
-        let air = SpendAir::new_seeded();
-        let (nk, inputs, outputs) = case(&air, 4);
+        let air = TallSpendAir::new_seeded();
+        let (nk, inputs, outputs) = case(4);
         let (pi, _proof) = prove_to_interface(&air, nk, &inputs, &outputs, 0, 0);
         assert_eq!(
             StarkSpendVerifier::new().verify(&pi, b"not a proof"),

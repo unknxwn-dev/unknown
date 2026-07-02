@@ -10,7 +10,8 @@
 //! share `unknown_poseidon`, the two sides agree byte-for-byte.
 
 use unknown_circuit_spend::field::Val;
-use unknown_circuit_spend::spend::{InputNote, OutputNote, PathStep, SpendAir};
+use unknown_circuit_spend::spend::{InputNote, OutputNote, PathStep};
+use unknown_circuit_spend::tall_spend::TallSpendAir;
 use unknown_circuit_spend::verifier::{prove_to_interface, StarkSpendVerifier};
 use unknown_interfaces::{MerklePath, SpendVerifier, TREE_DEPTH};
 use unknown_notes::Note;
@@ -74,7 +75,7 @@ fn real_pipeline_tx_verifies_through_stark_spend_verifier() {
 
     // Build the circuit witness from the real notes (fields mapped to the
     // field-element representation the circuit hashes).
-    let air = SpendAir::new_seeded();
+    let air = TallSpendAir::new_seeded();
     let inputs = [
         InputNote {
             value: in0.value,
