@@ -15,10 +15,12 @@ use unknown_primitives::{ds, hash_parts};
 
 const POW_BODY_LEN: usize = 8;
 
-/// Wire-format version. v2: the proof bucket is the real 192 KiB tall-layout
-/// STARK bucket (v1 carried the 192-byte dev-prover bucket). Consensus break,
-/// by design — v1 encodings are rejected.
-pub const TX_VERSION: u8 = 2;
+/// Wire-format version. v3: the spend proof transcript commits to the binding
+/// digest (security review F-1), so v2 proofs no longer verify. v2: the proof
+/// bucket is the real 192 KiB tall-layout STARK bucket (v1 carried the
+/// 192-byte dev-prover bucket). Consensus breaks, by design — older encodings
+/// are rejected.
+pub const TX_VERSION: u8 = 3;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct TxV1 {
@@ -46,15 +48,11 @@ pub enum TxError {
 
 impl TxV1 {
     /// Digest binding every field except the proof and the PoW solution.
-    /// The PoW is solved over this digest, so it commits to `enc_outputs` and
-    /// `anchor.height`.
-    ///
-    /// NOTE (see `docs/security-review.md`, F-1): the *proof* does not currently
-    /// bind this digest. `StarkSpendVerifier` checks only `anchor.root`, the
-    /// nullifiers, the commitments and the mint — so `enc_outputs` and
-    /// `anchor.height` are authenticated by the PoW alone, not by the STARK.
-    /// Binding `enc_outputs` into the circuit is tracked as Gate-0 work; until
-    /// then this digest is not a full anti-malleability barrier.
+    /// The PoW is solved over this digest, and the spend proof's Fiat–Shamir
+    /// transcript commits to it as a public input (see
+    /// `circuit_spend::spend::SpendPublic`), so any mutation of a bound field
+    /// — including `enc_outputs` and `anchor.height` — invalidates the proof
+    /// (anti-malleability; security review F-1).
     pub fn binding_digest(&self) -> [u8; 32] {
         let mut parts: Vec<&[u8]> = Vec::new();
         let h = self.anchor.height.to_le_bytes();

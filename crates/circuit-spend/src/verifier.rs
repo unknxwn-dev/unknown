@@ -21,7 +21,7 @@ use unknown_interfaces::{
 };
 
 use crate::field::{make_config, Config, FriProfile, Val};
-use crate::spend::{InputNote, OutputNote, SpendPublic, N_IN, N_OUT};
+use crate::spend::{binding_limbs, InputNote, OutputNote, SpendPublic, N_IN, N_OUT};
 use crate::tall_spend::{prove_tall_spend, verify_tall_spend, TallSpendAir, HEIGHT};
 
 /// Pack an 8-element Poseidon2 digest into 32 bytes (4 LE bytes per element).
@@ -76,6 +76,10 @@ impl SpendVerifier for StarkSpendVerifier {
             nullifiers: core::array::from_fn(|i| unpack(pi.nullifiers[i].0)),
             out_cms: core::array::from_fn(|j| unpack(pi.commitments[j].0)),
             mint: pi.mint_value,
+            // Transcript-bound (F-1): the proof only verifies against the
+            // binding digest it was generated for, which covers enc_outputs
+            // and anchor.height.
+            binding: binding_limbs(pi.binding_digest),
         };
         // Wire proofs are zero-padded to the fixed PROOF_BUCKET (D9). Require
         // the padding to be canonical (all zero) so a proof blob has exactly
@@ -92,6 +96,8 @@ impl SpendVerifier for StarkSpendVerifier {
 
 /// Prove a spend and package the result in the frozen interface types, so a
 /// caller (or test) can feed it straight to [`StarkSpendVerifier::verify`].
+/// `binding_digest` is the tx binding digest ([`unknown_tx`]'s
+/// `TxV1::binding_digest`), which the proof transcript commits to.
 pub fn prove_to_interface(
     air: &TallSpendAir<Val>,
     nk: [Val; 8],
@@ -99,8 +105,10 @@ pub fn prove_to_interface(
     outputs: &[OutputNote; N_OUT],
     mint: u64,
     anchor_height: u64,
+    binding_digest: [u8; 32],
 ) -> (SpendPublicInputs, Vec<u8>) {
-    let (_config, proof, _vk, public) = prove_tall_spend(air, nk, inputs, outputs, mint);
+    let (_config, proof, _vk, public) =
+        prove_tall_spend(air, nk, inputs, outputs, mint, binding_digest);
     let pi = SpendPublicInputs {
         anchor: Anchor {
             height: anchor_height,
@@ -116,7 +124,7 @@ pub fn prove_to_interface(
             .iter()
             .map(|c| Commitment(pack(*c)))
             .collect(),
-        binding_digest: [0u8; 32],
+        binding_digest,
         mint_value: mint,
     };
     let bytes = postcard::to_allocvec(&proof).expect("serialize proof");
@@ -202,7 +210,7 @@ mod tests {
     fn interface_round_trip_verifies() {
         let air = TallSpendAir::new_seeded();
         let (nk, inputs, outputs) = case(2);
-        let (pi, proof) = prove_to_interface(&air, nk, &inputs, &outputs, 0, 0);
+        let (pi, proof) = prove_to_interface(&air, nk, &inputs, &outputs, 0, 0, [7u8; 32]);
         StarkSpendVerifier::new()
             .verify(&pi, &proof)
             .expect("STARK SpendVerifier accepts a valid proof");
@@ -212,8 +220,23 @@ mod tests {
     fn tampered_public_input_is_rejected() {
         let air = TallSpendAir::new_seeded();
         let (nk, inputs, outputs) = case(3);
-        let (mut pi, proof) = prove_to_interface(&air, nk, &inputs, &outputs, 0, 0);
+        let (mut pi, proof) = prove_to_interface(&air, nk, &inputs, &outputs, 0, 0, [7u8; 32]);
         pi.anchor.root[0] ^= 0x01; // corrupt the anchor
+        assert_eq!(
+            StarkSpendVerifier::new().verify(&pi, &proof),
+            Err(VerifyError::Invalid)
+        );
+    }
+
+    /// F-1 regression (interface level): mutating any field the binding digest
+    /// covers — here modeled as the digest itself changing, as it would after
+    /// an enc_outputs or anchor.height mutation — must invalidate the proof.
+    #[test]
+    fn tampered_binding_digest_is_rejected() {
+        let air = TallSpendAir::new_seeded();
+        let (nk, inputs, outputs) = case(5);
+        let (mut pi, proof) = prove_to_interface(&air, nk, &inputs, &outputs, 0, 0, [7u8; 32]);
+        pi.binding_digest[0] ^= 0x01;
         assert_eq!(
             StarkSpendVerifier::new().verify(&pi, &proof),
             Err(VerifyError::Invalid)
@@ -224,7 +247,7 @@ mod tests {
     fn malformed_proof_is_rejected() {
         let air = TallSpendAir::new_seeded();
         let (nk, inputs, outputs) = case(4);
-        let (pi, _proof) = prove_to_interface(&air, nk, &inputs, &outputs, 0, 0);
+        let (pi, _proof) = prove_to_interface(&air, nk, &inputs, &outputs, 0, 0, [7u8; 32]);
         assert_eq!(
             StarkSpendVerifier::new().verify(&pi, b"not a proof"),
             Err(VerifyError::Malformed)

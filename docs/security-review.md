@@ -13,6 +13,22 @@ properties that are correctly enforced.
 
 ## F-1 (Medium) — the STARK verifier does not bind the ciphertexts or anchor height
 
+> **Status: FIXED** (tx wire version 3). The binding digest is now carried in
+> the spend circuit's public values as 16 × 16-bit limbs
+> (`circuit_spend::spend::SpendPublic::binding`). No AIR constraint reads
+> them; `p3_uni_stark` absorbs all public values into the Fiat–Shamir
+> challenger before sampling challenges, so a proof generated for one binding
+> digest fails verification under any other. `StarkSpendVerifier::verify` now
+> feeds `pi.binding_digest` into the public vector, and the wallet proves over
+> the tx body's real digest. Regression tests:
+> `wallet::tests::ciphertext_replacement_is_rejected` (mutates `enc_outputs`
+> and `anchor.height`, re-solves PoW, asserts rejection),
+> `tall_spend::tests::tampered_binding_digest_is_rejected`, and
+> `verifier::tests::tampered_binding_digest_is_rejected`. This was a consensus
+> break: `TX_VERSION` bumped 2→3 and the golden vectors regenerated
+> (`specs/vectors/consensus-v3.json`). The analysis below is kept as the
+> record of the vulnerable v2 behaviour.
+
 **Where:** `crates/circuit-spend/src/verifier.rs` (`StarkSpendVerifier::verify`),
 against `crates/tx/src/lib.rs` (`TxV1::binding_digest`, `to_public_inputs`,
 `validate_stateless`).
@@ -64,20 +80,19 @@ The cost is one PoW grind at the network difficulty. In the devnet and test
 configuration `difficulty_bits = 0` (`state::Ledger::genesis`, all callers),
 so the PoW binding is vacuous and the attack is free.
 
-**Fix (proper).** Bind `binding_digest` into the zero-knowledge statement:
-absorb `enc_outputs` (or a hash of them) as a circuit witness and constrain
-`binding_digest` as a public input equal to that hash, then have
-`StarkSpendVerifier::verify` pass and check it. This is bounded but real
-circuit work — it adds columns, regenerates the Poseidon2 golden vectors, and
-is a consensus break, so it is gated behind the same freeze process as any
-public-input change. Until then, `anchor.height` should either be dropped from
-`binding_digest` (it is redundant with `anchor.root`, which *is* bound) or
-documented as PoW-only, and the network must not run at `difficulty_bits = 0`
-outside tests.
-
-**Regression guard to add with the fix.** A test that mutates only
-`tx.enc_outputs`, re-solves PoW, and asserts `validate_stateless` still
-rejects — currently it would pass validation, which is the bug.
+**Fix (implemented — see status above).** Bind `binding_digest` into the
+proof as a public value. Two designs were considered: (a) absorb
+`enc_outputs` into the circuit and constrain their hash — sound but heavy
+(~80 additional Poseidon2 rows, and the digest would have to move off BLAKE3);
+(b) carry the digest as *unconstrained* public values and rely on Fiat–Shamir
+transcript binding — the challenger observes the public values before any
+challenge is sampled, so the proof is cryptographically bound to them exactly
+as it is to the constrained ones. (b) was implemented: it costs nothing in
+trace size and matches how the constrained public inputs are already
+authenticated (their binding to the *witness* is the constraints' job; their
+binding to the *proof* is the transcript's). Note that with (b) the digest
+stays BLAKE3 and out-of-circuit, which is fine because nothing about it needs
+to be proven — only committed to.
 
 ## F-2 (Low) — dummy inputs share the spender key and their nullifiers enter the global set
 
@@ -128,9 +143,9 @@ differentially tested against.
 
 ## Priority
 
-1. **F-1** — schedule the circuit-level binding of `enc_outputs`; in the
-   interim, forbid `difficulty_bits = 0` on any shared network and add the
-   regression guard.
+1. **F-1** — ~~bind the digest into the proof~~ **done** (transcript binding,
+   tx v3). Still outstanding: forbid `difficulty_bits = 0` on any shared
+   network (defence in depth; the PoW remains the anti-spam lane).
 2. **F-2** — document and test the dummy-`rho` sampling invariant.
 3. **F-3** — add a release-checklist item asserting no production binary links
    `DevVerifier`.

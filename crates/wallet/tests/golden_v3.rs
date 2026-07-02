@@ -1,4 +1,4 @@
-//! Golden vectors for the v2 consensus format (`specs/vectors/consensus-v2.json`).
+//! Golden vectors for the v3 consensus format (`specs/vectors/consensus-v3.json`).
 //!
 //! Pins every consensus-critical derivation the wallet/node stack performs:
 //! address-tag derivation, note commitment + nullifier (Poseidon2), the
@@ -9,7 +9,7 @@
 //! To regenerate after an intentional consensus break:
 //!
 //! ```text
-//! cargo test -p unknown-wallet --test golden_v2 -- --ignored regenerate
+//! cargo test -p unknown-wallet --test golden_v3 -- --ignored regenerate
 //! ```
 
 use serde_json::{json, Value};
@@ -22,7 +22,7 @@ use unknown_tree::CommitmentTree;
 use unknown_tx::{TxV1, TX_VERSION};
 use unknown_wallet::Wallet;
 
-const FROZEN: &str = include_str!("../../../specs/vectors/consensus-v2.json");
+const FROZEN: &str = include_str!("../../../specs/vectors/consensus-v3.json");
 
 /// Compute the vectors from fixed inputs. This is the generator of record;
 /// the committed JSON is its pinned output.
@@ -81,14 +81,14 @@ fn compute() -> Value {
 
 #[test]
 fn consensus_vectors_are_frozen() {
-    let frozen: Value = serde_json::from_str(FROZEN).expect("consensus-v2.json parses");
+    let frozen: Value = serde_json::from_str(FROZEN).expect("consensus-v3.json parses");
     let computed = compute();
     assert_eq!(
         computed,
         frozen,
-        "consensus derivations drifted from specs/vectors/consensus-v2.json.\n\
+        "consensus derivations drifted from specs/vectors/consensus-v3.json.\n\
          If this break is intentional, regenerate with:\n\
-         cargo test -p unknown-wallet --test golden_v2 -- --ignored regenerate\n\
+         cargo test -p unknown-wallet --test golden_v3 -- --ignored regenerate\n\
          computed:\n{}",
         serde_json::to_string_pretty(&computed).unwrap()
     );
@@ -100,8 +100,8 @@ fn consensus_vectors_are_frozen() {
 fn regenerate() {
     let path = concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../specs/vectors/consensus-v2.json"
+        "/../../specs/vectors/consensus-v3.json"
     );
     let json = serde_json::to_string_pretty(&compute()).unwrap();
-    std::fs::write(path, json + "\n").expect("write consensus-v2.json");
+    std::fs::write(path, json + "\n").expect("write consensus-v3.json");
 }

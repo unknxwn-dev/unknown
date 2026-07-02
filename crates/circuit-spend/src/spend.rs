@@ -51,6 +51,10 @@ pub const N_OUT: usize = 2;
 /// Byte-limbs per value, bits per limb.
 const LIMBS: usize = 8;
 const BITS: usize = 8;
+/// 16-bit limbs of the 32-byte tx binding digest carried as public values.
+/// 16-bit chunks are always < BabyBear's modulus, so arbitrary digest bytes
+/// (BLAKE3 output) embed losslessly.
+pub const BINDING_LIMBS: usize = 16;
 /// Values that are range-checked in-circuit (the witness in/out amounts).
 const N_VALUES: usize = N_IN + N_OUT;
 /// Replicated rows (single-row computation; COMPACT-SHORT minimum height).
@@ -177,19 +181,38 @@ pub struct OutputNote {
 }
 
 /// Public outputs of proving: anchor root, the two nullifiers, the two output
-/// commitments, and the mint amount (as byte-limbs).
+/// commitments, the mint amount (as byte-limbs), and the tx binding digest
+/// (as 16-bit limbs).
+///
+/// No AIR constraint reads the binding limbs; they bind the proof through the
+/// Fiat–Shamir transcript alone. `p3_uni_stark`'s prover and verifier both
+/// absorb the full public-values slice into the challenger before sampling
+/// any challenge, so a proof generated for one binding digest fails
+/// verification under any other. This is what authenticates the tx fields
+/// outside the circuit's digests — notably `enc_outputs` and `anchor.height`
+/// (security review F-1).
 #[derive(Clone, Debug)]
 pub struct SpendPublic {
     pub root: [Val; DIGEST],
     pub nullifiers: [[Val; DIGEST]; N_IN],
     pub out_cms: [[Val; DIGEST]; N_OUT],
     pub mint: u64,
+    pub binding: [Val; BINDING_LIMBS],
+}
+
+/// Embed a 32-byte binding digest as public-value limbs (16-bit LE chunks).
+pub fn binding_limbs(digest: [u8; 32]) -> [Val; BINDING_LIMBS] {
+    use p3_field::integers::QuotientMap;
+    core::array::from_fn(|i| {
+        let x = u16::from_le_bytes(digest[i * 2..i * 2 + 2].try_into().unwrap());
+        Val::from_int(x as u32)
+    })
 }
 
 impl SpendPublic {
     /// Flatten to the public-values vector the prover/verifier use.
     pub fn to_vec(&self) -> Vec<Val> {
-        let mut v = Vec::with_capacity(8 * (1 + N_IN + N_OUT) + LIMBS);
+        let mut v = Vec::with_capacity(8 * (1 + N_IN + N_OUT) + LIMBS + BINDING_LIMBS);
         v.extend_from_slice(&self.root);
         for nf in &self.nullifiers {
             v.extend_from_slice(nf);
@@ -200,6 +223,7 @@ impl SpendPublic {
         for j in 0..LIMBS {
             v.push(byte_to_field(byte(self.mint, j)));
         }
+        v.extend_from_slice(&self.binding);
         v
     }
 }
@@ -417,6 +441,7 @@ impl SpendAir<Val> {
             nullifiers,
             out_cms,
             mint,
+            binding: [Val::ZERO; BINDING_LIMBS],
         };
 
         let mut values = Vec::with_capacity(TOTAL_COLS * ROWS);
@@ -432,7 +457,7 @@ impl<F: PrimeCharacteristicRing + Sync> BaseAir<F> for SpendAir<F> {
         TOTAL_COLS
     }
     fn num_public_values(&self) -> usize {
-        DIGEST * (1 + N_IN + N_OUT) + LIMBS
+        DIGEST * (1 + N_IN + N_OUT) + LIMBS + BINDING_LIMBS
     }
     fn main_next_row_columns(&self) -> Vec<usize> {
         Vec::new()
@@ -624,15 +649,18 @@ impl<AB: AirBuilder> Air<AB> for SpendAir<AB::F> {
 }
 
 /// Prove a full spend. Returns config, proof, and the public values.
+/// `binding` is the tx binding digest, transcript-bound (see [`SpendPublic`]).
 pub fn prove_spend(
     air: &SpendAir<Val>,
     nk: [Val; RATE],
     inputs: &[InputNote; N_IN],
     outputs: &[OutputNote; N_OUT],
     mint: u64,
+    binding: [u8; 32],
 ) -> (Config, Proof<Config>, SpendPublic) {
     let config = make_config(FriProfile::COMPACT_SHORT);
-    let (trace, public) = air.generate_trace(nk, inputs, outputs, mint);
+    let (trace, mut public) = air.generate_trace(nk, inputs, outputs, mint);
+    public.binding = binding_limbs(binding);
     let pis = public.to_vec();
     let proof = prove(&config, air, trace, &pis);
     (config, proof, public)
@@ -733,7 +761,7 @@ mod tests {
     #[test]
     fn full_spend_proves_and_verifies() {
         let (air, nk, inputs, outputs) = build(1, [600, 400], [700, 300]);
-        let (config, proof, public) = prove_spend(&air, nk, &inputs, &outputs, 0);
+        let (config, proof, public) = prove_spend(&air, nk, &inputs, &outputs, 0, [9u8; 32]);
         verify_spend(&config, &air, &proof, &public).expect("spend verifies");
     }
 
@@ -780,14 +808,14 @@ mod tests {
                 rseed: digest(&mut rng),
             },
         ];
-        let (config, proof, public) = prove_spend(&air, nk, &inputs, &outputs, 1000);
+        let (config, proof, public) = prove_spend(&air, nk, &inputs, &outputs, 1000, [9u8; 32]);
         verify_spend(&config, &air, &proof, &public).expect("mint verifies");
     }
 
     #[test]
     fn wrong_root_is_rejected() {
         let (air, nk, inputs, outputs) = build(3, [600, 400], [700, 300]);
-        let (config, proof, mut public) = prove_spend(&air, nk, &inputs, &outputs, 0);
+        let (config, proof, mut public) = prove_spend(&air, nk, &inputs, &outputs, 0, [9u8; 32]);
         public.root[0] += Val::ONE;
         assert!(verify_spend(&config, &air, &proof, &public).is_err());
     }
@@ -795,7 +823,7 @@ mod tests {
     #[test]
     fn wrong_nullifier_is_rejected() {
         let (air, nk, inputs, outputs) = build(4, [600, 400], [700, 300]);
-        let (config, proof, mut public) = prove_spend(&air, nk, &inputs, &outputs, 0);
+        let (config, proof, mut public) = prove_spend(&air, nk, &inputs, &outputs, 0, [9u8; 32]);
         public.nullifiers[1][0] += Val::ONE;
         assert!(verify_spend(&config, &air, &proof, &public).is_err());
     }
@@ -803,7 +831,7 @@ mod tests {
     #[test]
     fn wrong_output_commitment_is_rejected() {
         let (air, nk, inputs, outputs) = build(5, [600, 400], [700, 300]);
-        let (config, proof, mut public) = prove_spend(&air, nk, &inputs, &outputs, 0);
+        let (config, proof, mut public) = prove_spend(&air, nk, &inputs, &outputs, 0, [9u8; 32]);
         public.out_cms[0][0] += Val::ONE;
         assert!(verify_spend(&config, &air, &proof, &public).is_err());
     }
@@ -814,6 +842,6 @@ mod tests {
     fn inflation_is_rejected() {
         // Consistent paths, but outputs exceed inputs + mint: 600+400 != 800+300.
         let (air, nk, inputs, outputs) = build(6, [600, 400], [800, 300]);
-        let _ = prove_spend(&air, nk, &inputs, &outputs, 0);
+        let _ = prove_spend(&air, nk, &inputs, &outputs, 0, [9u8; 32]);
     }
 }

@@ -20,14 +20,15 @@ persistence / networking / hardening needed to run untrusted nodes.
 Close before any shared deployment, because it is a soundness/liveness gap, not
 a scaling item.
 
-- **F-1: bind `enc_outputs` into the spend proof.** Absorb the ciphertexts (or
-  their hash) as circuit witness, expose `binding_digest` as a checked public
-  input, and enforce it in `StarkSpendVerifier::verify`. Regenerate Poseidon2
-  golden vectors; this is a consensus break and takes the freeze process. Ship
-  with the regression test from the security review (mutate `enc_outputs`,
-  re-solve PoW, assert rejection).
-- **Interim mitigation:** forbid `difficulty_bits = 0` on any non-test network;
-  drop or document `anchor.height` in `binding_digest`.
+- **F-1: bind `enc_outputs` into the spend proof.** ✅ **Done** (tx v3): the
+  binding digest is transcript-bound as public-value limbs; the wallet proves
+  over the real tx digest and `StarkSpendVerifier` checks it. Regression
+  tests landed (`ciphertext_replacement_is_rejected` and the two
+  `tampered_binding_digest_is_rejected` tests); golden vectors regenerated
+  (`consensus-v3.json`).
+- **Remaining hardening:** forbid `difficulty_bits = 0` on any non-test
+  network (the PoW is now defence-in-depth for malleability but is still the
+  anti-spam lane).
 - **F-2:** document and test the dummy-`rho` uniform-sampling invariant.
 - **F-3:** release-checklist item — no production binary may link `DevVerifier`.
 

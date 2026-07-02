@@ -241,6 +241,7 @@ impl Wallet {
             &circuit_outputs,
             0,
             anchor.height,
+            binding,
         );
         // The circuit's public digests must equal the tx body we committed to.
         if pi.anchor.root != anchor.root
@@ -322,6 +323,58 @@ mod tests {
         let mut alice2 = Wallet::from_seed(&[1u8; 32]);
         assert!(alice2.try_receive(&tx.enc_outputs[1], 2));
         assert_eq!(alice2.balance(), 70);
+    }
+
+    /// F-1 regression (security review): an attacker who swaps a transaction's
+    /// encrypted outputs and re-solves the PoW must NOT produce a valid tx.
+    /// The proof transcript commits to the binding digest (which covers
+    /// enc_outputs), so the mutated tx's recomputed digest no longer matches
+    /// the one the proof was generated for.
+    #[test]
+    fn ciphertext_replacement_is_rejected() {
+        let alice = Wallet::from_seed(&[1u8; 32]);
+        let bob = Wallet::from_seed(&[2u8; 32]);
+        let alice_note = Note {
+            value: 100,
+            addr_tag: alice.address().addr_tag,
+            rho: [9; 32],
+            rseed: [8; 32],
+        };
+        let mut tree = CommitmentTree::new();
+        let pos = tree.append(alice_note.commitment());
+        let anchor = tree.seal(0);
+        let mut alice = alice;
+        alice.unspent.push(NoteRecord {
+            note: alice_note,
+            position: pos,
+        });
+        let tx = alice
+            .build_transfer(&bob.address(), 30, anchor, |p| tree.witness(p), [42u8; 32])
+            .expect("build transfer");
+
+        use unknown_circuit_spend::verifier::StarkSpendVerifier;
+        let verifier = StarkSpendVerifier::new();
+        unknown_tx::validate_stateless(&tx, &verifier, 0).expect("original tx valid");
+
+        // The attack: garble a ciphertext, then re-grind the (free at
+        // difficulty 0) PoW over the new binding digest.
+        let mut mauled = tx.clone();
+        mauled.enc_outputs[0].bytes[0] ^= 1;
+        mauled.pow = solve(&mauled.binding_digest(), 0);
+        assert_eq!(
+            unknown_tx::validate_stateless(&mauled, &verifier, 0),
+            Err(unknown_tx::TxError::ProofInvalid),
+            "ciphertext-replacement malleation must be rejected"
+        );
+
+        // Same for the anchor height (also outside the circuit's digests).
+        let mut mauled = tx;
+        mauled.anchor.height += 1;
+        mauled.pow = solve(&mauled.binding_digest(), 0);
+        assert!(
+            unknown_tx::validate_stateless(&mauled, &verifier, 0).is_err(),
+            "anchor.height malleation must be rejected"
+        );
     }
 
     #[test]

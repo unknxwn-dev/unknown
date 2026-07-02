@@ -45,7 +45,9 @@ use unknown_interfaces::TREE_DEPTH;
 use crate::field::{make_config, Config, FriProfile, Val};
 use crate::hash::{CAP, DIGEST, RATE};
 use crate::perm::{eval_perm_body, input_off, output_off, Poseidon2PermAir, WIDTH, WIDTH_COLS};
-use crate::spend::{InputNote, Knockout, OutputNote, SpendPublic, N_IN, N_OUT};
+use crate::spend::{
+    binding_limbs, InputNote, Knockout, OutputNote, SpendPublic, BINDING_LIMBS, N_IN, N_OUT,
+};
 
 const CM_BLOCKS: usize = 4;
 const NF_BLOCKS: usize = 2;
@@ -331,6 +333,7 @@ impl TallSpendAir<Val> {
             nullifiers,
             out_cms,
             mint,
+            binding: [Val::ZERO; BINDING_LIMBS],
         };
         (RowMajorMatrix::new(values, SPEND_COLS), public)
     }
@@ -371,7 +374,7 @@ impl<F: PrimeCharacteristicRing + Sync + Send> BaseAir<F> for TallSpendAir<F> {
         SPEND_COLS
     }
     fn num_public_values(&self) -> usize {
-        DIGEST * (1 + N_IN + N_OUT) + LIMBS
+        DIGEST * (1 + N_IN + N_OUT) + LIMBS + BINDING_LIMBS
     }
     fn main_next_row_columns(&self) -> Vec<usize> {
         // input halves + dir (digest routing / capacity chaining), registers
@@ -626,13 +629,15 @@ where
 }
 
 /// Prove a full spend in the tall layout. Returns config, proof, preprocessed
-/// verifier key, and the public values.
+/// verifier key, and the public values. `binding` is the tx binding digest,
+/// transcript-bound (see [`SpendPublic`]).
 pub fn prove_tall_spend(
     air: &TallSpendAir<Val>,
     nk: [Val; RATE],
     inputs: &[InputNote; N_IN],
     outputs: &[OutputNote; N_OUT],
     mint: u64,
+    binding: [u8; 32],
 ) -> (
     Config,
     Proof<Config>,
@@ -643,7 +648,8 @@ pub fn prove_tall_spend(
     let degree_bits = HEIGHT.trailing_zeros() as usize;
     let (pd, vk) =
         setup_preprocessed(&config, air, degree_bits).expect("AIR has preprocessed columns");
-    let (trace, public) = air.generate_trace(nk, inputs, outputs, mint);
+    let (trace, mut public) = air.generate_trace(nk, inputs, outputs, mint);
+    public.binding = binding_limbs(binding);
     let pis = public.to_vec();
     let proof = prove_with_preprocessed(&config, air, trace, &pis, Some(&pd));
     (config, proof, vk, public)
@@ -743,7 +749,7 @@ mod tests {
     #[test]
     fn tall_spend_proves_and_verifies() {
         let (air, nk, inputs, outputs) = build(1, [600, 400], [700, 300]);
-        let (config, proof, vk, public) = prove_tall_spend(&air, nk, &inputs, &outputs, 0);
+        let (config, proof, vk, public) = prove_tall_spend(&air, nk, &inputs, &outputs, 0, [9u8; 32]);
         verify_tall_spend(&config, &air, &proof, &vk, &public).expect("tall spend verifies");
     }
 
@@ -800,14 +806,14 @@ mod tests {
                 rseed: digest(&mut rng),
             },
         ];
-        let (config, proof, vk, public) = prove_tall_spend(&air, nk, &inputs, &outputs, 1000);
+        let (config, proof, vk, public) = prove_tall_spend(&air, nk, &inputs, &outputs, 1000, [9u8; 32]);
         verify_tall_spend(&config, &air, &proof, &vk, &public).expect("mint verifies");
     }
 
     #[test]
     fn tampered_publics_are_rejected() {
         let (air, nk, inputs, outputs) = build(4, [600, 400], [700, 300]);
-        let (config, proof, vk, public) = prove_tall_spend(&air, nk, &inputs, &outputs, 0);
+        let (config, proof, vk, public) = prove_tall_spend(&air, nk, &inputs, &outputs, 0, [9u8; 32]);
         for f in [
             |p: &mut SpendPublic| p.root[0] += Val::ONE,
             |p: &mut SpendPublic| p.nullifiers[0][0] += Val::ONE,
@@ -825,13 +831,30 @@ mod tests {
         }
     }
 
+    /// F-1 regression (circuit level): the binding digest is public-value
+    /// transcript-bound, so a proof generated for one digest must not verify
+    /// under another — even though no AIR constraint reads the binding limbs.
+    #[test]
+    fn tampered_binding_digest_is_rejected() {
+        let (air, nk, inputs, outputs) = build(7, [600, 400], [700, 300]);
+        let (config, proof, vk, public) = prove_tall_spend(&air, nk, &inputs, &outputs, 0, [9u8; 32]);
+        let mut bad = public.clone();
+        bad.binding = binding_limbs([10u8; 32]);
+        assert!(
+            verify_tall_spend(&config, &air, &proof, &vk, &bad).is_err(),
+            "proof accepted under a different binding digest"
+        );
+        // Sanity: the untampered public values still verify.
+        verify_tall_spend(&config, &air, &proof, &vk, &public).expect("original verifies");
+    }
+
     #[cfg(debug_assertions)]
     #[test]
     #[should_panic(expected = "constraints")]
     fn inflation_is_rejected() {
         // 600 + 400 != 800 + 300 — no valid carry assignment exists.
         let (air, nk, inputs, outputs) = build(5, [600, 400], [800, 300]);
-        let _ = prove_tall_spend(&air, nk, &inputs, &outputs, 0);
+        let _ = prove_tall_spend(&air, nk, &inputs, &outputs, 0, [9u8; 32]);
     }
 
     /// The KPI test: the full tall spend proof must be under the 250 KB
@@ -839,7 +862,7 @@ mod tests {
     #[test]
     fn tall_spend_proof_meets_gate_a_kpi() {
         let (air, nk, inputs, outputs) = build(6, [600, 400], [700, 300]);
-        let (_c, proof, _vk, _p) = prove_tall_spend(&air, nk, &inputs, &outputs, 0);
+        let (_c, proof, _vk, _p) = prove_tall_spend(&air, nk, &inputs, &outputs, 0, [9u8; 32]);
         let size = postcard::to_allocvec(&proof).unwrap().len();
         println!("tall fused spend proof: {size} bytes");
         assert!(
