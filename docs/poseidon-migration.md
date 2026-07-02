@@ -79,11 +79,19 @@ all-zero padding. The node validates checkpoints with `StarkSpendVerifier`;
 the full lifecycle demo (genesis → transfer → chained spend → emission →
 supply audit) passes on STARK proofs.
 
+## Golden vectors (done)
+
+`specs/vectors/consensus-v2.json` pins the v2 consensus derivations —
+address-tag, note commitment + nullifier, tree roots, tx version / proof
+bucket / encoded length, and a full encoded address. The
+`consensus_vectors_are_frozen` test (wallet crate) fails on any drift; an
+explicitly-invoked ignored test regenerates the file after an intentional
+break.
+
 ## Remaining
 
 1. **Independent constant cross-check.** Verify `poseidon2.json` against a
    second, non-Plonky3 Poseidon2 implementation (plan WP1) before mainnet.
-2. **Golden vectors.** Regenerate frozen tx/note vectors for the v2 format.
-3. **Retire the wide `spend.rs`** once nothing but the knockout cross-check
+2. **Retire the wide `spend.rs`** once nothing but the knockout cross-check
    uses it (it currently serves as the reference implementation the tall
    circuit is checked against).

@@ -1551,6 +1551,9 @@ dependencies = [
 name = "unknown-wallet"
 version = "0.0.1"
 dependencies = [
+ "hex",
+ "serde",
+ "serde_json",
  "thiserror",
  "unknown-antispam-pow",
  "unknown-circuit-spend",

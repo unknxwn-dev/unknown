@@ -17,5 +17,10 @@ unknown-poseidon.workspace = true
 unknown-antispam-pow.workspace = true
 thiserror.workspace = true
 
+[dev-dependencies]
+serde.workspace = true
+serde_json.workspace = true
+hex.workspace = true
+
 [lints]
 workspace = true
