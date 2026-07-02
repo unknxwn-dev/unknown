@@ -21,21 +21,15 @@ These cover the *measured* halves (hashing cost + sound arithmetic). The fused s
 
 ## Fused-circuit proof size (finding)
 
-The `StarkSpendVerifier` proves the *fused* `circuit-spend::spend` AIR (all of C1–C7 in one statement). Measured fused proof, COMPACT-SHORT profile:
+The `StarkSpendVerifier` originally proved the *fused* `circuit-spend::spend` AIR (all of C1–C7 in one statement) in a **wide single-row** layout: all **86 Poseidon2 permutations packed into the columns of one row** (`4+2+1+32 = 39` perms per input × 2, plus 8 output-commitment perms), replicated 16× to reach FRI's minimum height. FRI commits to and opens *every* column, so the proof scaled with the ~22k-column width — **5.39 MB, ~20× over the ≤ 250 KB Gate-A KPI**.
 
-| Circuit | Layout | Trace (rows × cols) | Proof |
-|---|---|---|---:|
-| fused spend (C1–C7) | **wide single-row** | 16 × ~22k | **5.39 MB** |
+**Fix (landed): the tall layout.** `circuit-spend::tall_spend` proves the same statement with one permutation per *row* — 86 real rows padded to height 128, ~474 columns. Sponge capacity and Merkle nodes chain across adjacent rows by transition constraints; register columns (`nk`, `rho`, `tag`, `dummy`) carry values between non-adjacent rows, held constant by a preprocessed `keep` selector; a running signed accumulator replaces the one-row balance arithmetic; preprocessed selectors mark which row binds which public value. Measured (COMPACT profile):
 
-This **fails the ≤ 250 KB Gate-A KPI by ~20×.** Root cause is the *layout*, not the proof system: the fused AIR packs all **86 Poseidon2 permutations into the columns of a single row** (`PERMS_PER_IN = CM_BLOCKS + NF_BLOCKS + TAG_BLOCKS + DEPTH = 4+2+1+32 = 39` per input × 2 inputs, plus 8 output-commitment perms), each perm `WIDTH_COLS` wide, then replicates that one row 16× to reach FRI's minimum height. FRI commits to and opens *every* column, so proof size scales with the ~22k-column width. The component table above stays small precisely because each component is one Poseidon2 AIR of fixed modest width.
+| Circuit | Layout | Trace (rows × cols) | Proof | KPI (≤ 250 KB) |
+|---|---|---|---:|---|
+| fused spend (C1–C7) | wide single-row | 16 × ~22k | 5.39 MB | ✗ 20× over |
+| tall sponge (4 blocks) | tall | 32 × 352 | 143.0 KB | (gadget) |
+| tall Merkle (depth 32) | tall | 32 × 353 | 143.2 KB | (gadget) |
+| **fused spend (C1–C7)** | **tall** | **128 × 474** | **185.4 KB** | **✓** |
 
-**Remediation (in progress):** rebuild the spend AIR in the standard **tall** layout — one permutation per *row* (≈86 perms → ≈128 rows after power-of-two padding) with ≈ `WIDTH_COLS` columns, plus transition constraints to chain sponge capacity / Merkle nodes across consecutive rows, preprocessed selector columns to type each row, and binding of specific rows to the public values. That moves the work from columns (every one opened) to rows (logarithmic FRI cost), which is how the component proofs already stay ≈ 130 KiB. Until the full statement is converted, `PROOF_BUCKET` is **not** bumped — sizing the consensus bucket to the throwaway 5.4 MB wide-layout value would be churn.
-
-The foundational pieces are in place in `circuit-spend::tall`, both using one perm per row, transition-constraint chaining, and preprocessed selector columns:
-
-| Tall gadget | Perms (rows) | Proof |
-|---|---:|---:|
-| sponge, 4 blocks | 4 | 143.0 KB |
-| Merkle membership, depth 32 | 32 | 143.2 KB |
-
-The depth-32 Merkle gadget is the load-bearing conversion — the spend's two paths are 64 of its ~86 perms. Note the proof grew only ~200 bytes for 8× the permutations: in the tall layout, size is dominated by the FRI query count, not the trace height, so the full ≈86-perm statement (≈128 rows) lands well under the 250 KB KPI. Remaining: fold the commitment/nullifier/tag sponges, both Merkle paths, and the range/balance arithmetic into one tall trace with per-row-type selectors, then swap `StarkSpendVerifier` onto it.
+The tall fused proof is a **29× reduction**. Note the gadget data: proof size in this regime is dominated by FRI query count × trace *width*, not height — going from 4 perms to 32 cost ~200 bytes, and the full 86-perm statement costs only ~42 KB over the gadgets (the extra ~122 columns). Remaining: port the knockout harness to the tall AIR, swap `StarkSpendVerifier` onto it, retire the wide `spend.rs`, then set the real `PROOF_BUCKET` (~192 KiB with margin) and bump the tx version.

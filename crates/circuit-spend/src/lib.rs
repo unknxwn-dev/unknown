@@ -42,4 +42,5 @@ pub mod poseidon2;
 pub mod spend;
 pub mod spend_input;
 pub mod tall;
+pub mod tall_spend;
 pub mod verifier;
