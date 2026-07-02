@@ -6,11 +6,11 @@
 //! sees is opaque (commitments, nullifiers, ciphertexts, proofs); balances and
 //! recipients live only in the wallets.
 
+use unknown_circuit_spend::verifier::StarkSpendVerifier;
 use unknown_emission::EmissionParams;
 use unknown_encryption::encrypt_note;
 use unknown_interfaces::Anchor;
 use unknown_notes::Note;
-use unknown_prover_dev::DevVerifier;
 use unknown_state::{Ledger, ValidatorInfo};
 use unknown_tx::TxV1;
 use unknown_wallet::Wallet;
@@ -20,6 +20,7 @@ const GENESIS_FUND: u64 = 1_000_000;
 struct Demo {
     ledger: Ledger,
     genesis_supply: u64,
+    verifier: StarkSpendVerifier,
 }
 
 impl Demo {
@@ -30,7 +31,7 @@ impl Demo {
         // ledger reports accept/reject, and output_positions covers accepted
         // outputs in order. For the demo all submitted txs are valid.
         let enc_outputs: Vec<_> = txs.iter().map(|t| t.enc_outputs.clone()).collect();
-        let summary = self.ledger.apply_checkpoint(&txs, &DevVerifier);
+        let summary = self.ledger.apply_checkpoint(&txs, &self.verifier);
 
         // Deliver nullifiers (spentness) and outputs (receipts) to wallets.
         let all_nf: Vec<_> = txs.iter().flat_map(|t| t.nullifiers).collect();
@@ -100,6 +101,7 @@ fn run_demo() -> Result<Vec<String>, String> {
     let mut demo = Demo {
         ledger,
         genesis_supply: GENESIS_FUND,
+        verifier: StarkSpendVerifier::new(),
     };
 
     // Deliver the genesis note to Alice (she trial-decrypts like any output).
@@ -169,7 +171,7 @@ fn run_demo() -> Result<Vec<String>, String> {
 }
 
 fn main() {
-    println!("unknown devnet — shielded DAG L1 prototype (dev prover, single sequencer)\n");
+    println!("unknown devnet — shielded DAG L1 prototype (STARK prover, single sequencer)\n");
     match run_demo() {
         Ok(log) => {
             for line in log {

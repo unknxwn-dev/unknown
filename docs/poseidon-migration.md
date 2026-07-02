@@ -67,14 +67,23 @@ end-to-end pipeline test proves ~8× faster too). `PROOF_BUCKET` is the real
 **192 KiB** STARK bucket and the wire format is **`TX_VERSION = 2`** (v1 is
 rejected — a consensus break, by design).
 
+## Wallet/node wiring (done)
+
+The devnet runs on real STARKs end to end. The wallet maps its notes + tree
+witnesses to the tall circuit's witness and proves via `prove_to_interface`
+(inputs sorted by nullifier to match the wire order; dummies are zero-value
+notes addressed to the spender — C3 covers every input — with fresh
+per-transaction entropy so dummy nullifiers are unlinkable). Proofs are
+zero-padded to `PROOF_BUCKET`; `StarkSpendVerifier` requires canonical
+all-zero padding. The node validates checkpoints with `StarkSpendVerifier`;
+the full lifecycle demo (genesis → transfer → chained spend → emission →
+supply audit) passes on STARK proofs.
+
 ## Remaining
 
 1. **Independent constant cross-check.** Verify `poseidon2.json` against a
    second, non-Plonky3 Poseidon2 implementation (plan WP1) before mainnet.
 2. **Golden vectors.** Regenerate frozen tx/note vectors for the v2 format.
-3. **Wallet/state wiring.** Have the wallet build the circuit witness from its
-   notes + tree witnesses (the `tests/pipeline.rs` flow) and have the node use
-   `StarkSpendVerifier` in place of the dev verifier.
-4. **Retire the wide `spend.rs`** once nothing but the knockout cross-check
+3. **Retire the wide `spend.rs`** once nothing but the knockout cross-check
    uses it (it currently serves as the reference implementation the tall
    circuit is checked against).

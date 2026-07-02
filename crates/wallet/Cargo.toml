@@ -12,7 +12,8 @@ unknown-notes.workspace = true
 unknown-tree.workspace = true
 unknown-encryption.workspace = true
 unknown-tx.workspace = true
-unknown-prover-dev.workspace = true
+unknown-circuit-spend.workspace = true
+unknown-poseidon.workspace = true
 unknown-antispam-pow.workspace = true
 thiserror.workspace = true
 

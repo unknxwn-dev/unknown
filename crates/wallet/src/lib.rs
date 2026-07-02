@@ -5,14 +5,21 @@
 //! provides witnesses; engineering plan §3.6 forbids per-note queries, so the
 //! integrated node feeds witnesses for positions the wallet already knows from
 //! scanning its own outputs).
+//!
+//! Proving is the real thing: the wallet maps its notes and tree witnesses to
+//! the tall STARK spend circuit's witness and produces a `PROOF_BUCKET`-padded
+//! proof that [`unknown_circuit_spend::verifier::StarkSpendVerifier`] accepts.
 
 use std::collections::HashSet;
 use unknown_antispam_pow::{solve, PowSolution};
+use unknown_circuit_spend::spend::{InputNote, OutputNote};
+use unknown_circuit_spend::tall_spend::TallSpendAir;
+use unknown_circuit_spend::verifier::prove_to_interface;
 use unknown_encryption::{encrypt_note, try_decrypt, EncryptedOutput};
-use unknown_interfaces::{Anchor, MerklePath, Nullifier, TX_INPUTS, TX_OUTPUTS};
+use unknown_interfaces::{Anchor, MerklePath, Nullifier, TREE_DEPTH, TX_INPUTS, TX_OUTPUTS};
 use unknown_keys::{Address, SpendingKey};
 use unknown_notes::{rho_transfer, Note, MEMO_LEN};
-use unknown_prover_dev::{prove, InputWitness, SpendWitness};
+use unknown_poseidon as poseidon;
 use unknown_tx::TxV1;
 
 #[derive(Clone, Debug)]
@@ -132,31 +139,35 @@ impl Wallet {
         let input_value: u64 = selected.iter().map(|r| r.note.value).sum();
         let change = input_value - amount;
 
-        // Build input witnesses, padding to TX_INPUTS with dummies.
-        let mut inputs: Vec<InputWitness> = Vec::with_capacity(TX_INPUTS);
+        // Build the input notes, padding to TX_INPUTS with dummies. A dummy is
+        // a zero-value note addressed to ourselves (the circuit's ownership
+        // constraint C3 covers every input, dummies included) with fresh
+        // per-transaction entropy, so its published nullifier is unlinkable
+        // across transactions.
+        let mut inputs: Vec<(Note, MerklePath, bool)> = Vec::with_capacity(TX_INPUTS);
         for r in &selected {
             let path = witness_for(r.position).ok_or(WalletError::MissingWitness(r.position))?;
-            inputs.push(InputWitness {
-                note: r.note,
-                path,
-                is_dummy: false,
-            });
+            inputs.push((r.note, path, false));
         }
         let mut dummy_ctr = 0u8;
         while inputs.len() < TX_INPUTS {
-            let dummy = Note::dummy([0xD0 ^ dummy_ctr; 32]);
-            inputs.push(InputWitness {
-                note: dummy,
-                path: empty_path(),
-                is_dummy: true,
-            });
+            let dummy = Note {
+                value: 0,
+                addr_tag: tag,
+                rho: derive_rseed(&rng_seed, 0xD0 ^ dummy_ctr),
+                rseed: derive_rseed(&rng_seed, 0xE0 ^ dummy_ctr),
+            };
+            inputs.push((dummy, empty_path(), true));
             dummy_ctr += 1;
         }
 
-        // The output rho derives from the smallest input nullifier (canonical
-        // order, matching prover canonicalization).
-        let mut nfs: Vec<Nullifier> = inputs.iter().map(|i| i.note.nullifier(&nk)).collect();
-        nfs.sort_by(|a, b| a.0.cmp(&b.0));
+        // Canonical order: the wire format sorts nullifiers ascending, and the
+        // circuit binds nullifier i to input i — so sort inputs by nullifier.
+        inputs.sort_by_key(|(note, _, _)| note.nullifier(&nk).0);
+        let nfs: Vec<Nullifier> = inputs
+            .iter()
+            .map(|(note, _, _)| note.nullifier(&nk))
+            .collect();
         let first_nf = nfs[0];
 
         let memo = [0u8; MEMO_LEN];
@@ -172,7 +183,7 @@ impl Wallet {
             rho: rho_transfer(&first_nf, 1),
             rseed: derive_rseed(&rng_seed, 1),
         };
-        let outputs = vec![out_recipient, out_change];
+        let outputs = [out_recipient, out_change];
 
         // Encrypt outputs (change goes to our own address).
         let my_addr = self.sk.address();
@@ -197,17 +208,53 @@ impl Wallet {
         };
         let binding = partial.binding_digest();
 
-        let witness = SpendWitness {
-            spender_nk: nk,
-            spender_addr_tag: tag,
-            inputs,
-            outputs,
-            mint_value: 0,
-            binding_digest: binding,
-        };
-        let (_pi, proof) = prove(&witness, anchor).map_err(|e| match e {
-            unknown_interfaces::ProveError::Unsatisfied(s) => WalletError::Prove(s),
-        })?;
+        // Map the witness to the STARK circuit's field representation and prove.
+        let circuit_inputs: [InputNote; TX_INPUTS] = core::array::from_fn(|i| {
+            let (note, path, dummy) = &inputs[i];
+            InputNote {
+                value: note.value,
+                addr_tag: poseidon::bytes_to_field(note.addr_tag),
+                rho: poseidon::bytes_to_field(note.rho),
+                rseed: poseidon::bytes_to_field(note.rseed),
+                path: (0..TREE_DEPTH)
+                    .map(|l| {
+                        (
+                            poseidon::unpack(path.siblings[l]),
+                            (path.position >> l) & 1 == 1,
+                        )
+                    })
+                    .collect(),
+                dummy: *dummy,
+            }
+        });
+        let circuit_outputs: [OutputNote; TX_OUTPUTS] = core::array::from_fn(|j| OutputNote {
+            value: outputs[j].value,
+            addr_tag: poseidon::bytes_to_field(outputs[j].addr_tag),
+            rho: poseidon::bytes_to_field(outputs[j].rho),
+            rseed: poseidon::bytes_to_field(outputs[j].rseed),
+        });
+        let air = TallSpendAir::new_seeded();
+        let (pi, mut proof) = prove_to_interface(
+            &air,
+            poseidon::bytes_to_field(nk),
+            &circuit_inputs,
+            &circuit_outputs,
+            0,
+            anchor.height,
+        );
+        // The circuit's public digests must equal the tx body we committed to.
+        if pi.anchor.root != anchor.root
+            || pi.nullifiers != sorted_nfs
+            || pi.commitments != commitments
+        {
+            return Err(WalletError::Prove("circuit public values diverge from tx"));
+        }
+        // Pad to the uniform proof bucket (D9); the verifier requires the
+        // padding to be all-zero.
+        if proof.len() > unknown_interfaces::PROOF_BUCKET {
+            return Err(WalletError::Prove("proof exceeds PROOF_BUCKET"));
+        }
+        proof.resize(unknown_interfaces::PROOF_BUCKET, 0);
 
         let pow = solve(&binding, 0); // dev difficulty 0; node enforces its param
         Ok(TxV1 {
@@ -263,9 +310,9 @@ mod tests {
             .build_transfer(&bob.address(), 30, anchor, |p| tree.witness(p), [42u8; 32])
             .expect("build transfer");
 
-        // Node-side stateless validation passes.
-        use unknown_prover_dev::DevVerifier;
-        unknown_tx::validate_stateless(&tx, &DevVerifier, 0).expect("tx valid");
+        // Node-side stateless validation passes under the real STARK verifier.
+        use unknown_circuit_spend::verifier::StarkSpendVerifier;
+        unknown_tx::validate_stateless(&tx, &StarkSpendVerifier::new(), 0).expect("tx valid");
 
         // Bob can receive output 0 (recipient); Alice receives change.
         let mut bob = bob;

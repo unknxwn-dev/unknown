@@ -1453,13 +1453,13 @@ name = "unknown-node"
 version = "0.0.1"
 dependencies = [
  "unknown-antispam-pow",
+ "unknown-circuit-spend",
  "unknown-emission",
  "unknown-encryption",
  "unknown-interfaces",
  "unknown-keys",
  "unknown-notes",
  "unknown-primitives",
- "unknown-prover-dev",
  "unknown-state",
  "unknown-tree",
  "unknown-tx",
@@ -1553,12 +1553,13 @@ version = "0.0.1"
 dependencies = [
  "thiserror",
  "unknown-antispam-pow",
+ "unknown-circuit-spend",
  "unknown-encryption",
  "unknown-interfaces",
  "unknown-keys",
  "unknown-notes",
+ "unknown-poseidon",
  "unknown-primitives",
- "unknown-prover-dev",
  "unknown-tree",
  "unknown-tx",
 ]

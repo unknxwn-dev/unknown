@@ -77,8 +77,14 @@ impl SpendVerifier for StarkSpendVerifier {
             out_cms: core::array::from_fn(|j| unpack(pi.commitments[j].0)),
             mint: pi.mint_value,
         };
-        let proof: Proof<Config> =
-            postcard::from_bytes(proof).map_err(|_| VerifyError::Malformed)?;
+        // Wire proofs are zero-padded to the fixed PROOF_BUCKET (D9). Require
+        // the padding to be canonical (all zero) so a proof blob has exactly
+        // one accepted encoding.
+        let (proof, rest): (Proof<Config>, &[u8]) =
+            postcard::take_from_bytes(proof).map_err(|_| VerifyError::Malformed)?;
+        if !rest.iter().all(|&b| b == 0) {
+            return Err(VerifyError::Malformed);
+        }
         verify_tall_spend(&self.config, &self.air, &proof, &self.vk, &public)
             .map_err(|_| VerifyError::Invalid)
     }
