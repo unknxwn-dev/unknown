@@ -31,4 +31,11 @@ This **fails the ≤ 250 KB Gate-A KPI by ~20×.** Root cause is the *layout*, n
 
 **Remediation (in progress):** rebuild the spend AIR in the standard **tall** layout — one permutation per *row* (≈86 perms → ≈128 rows after power-of-two padding) with ≈ `WIDTH_COLS` columns, plus transition constraints to chain sponge capacity / Merkle nodes across consecutive rows, preprocessed selector columns to type each row, and binding of specific rows to the public values. That moves the work from columns (every one opened) to rows (logarithmic FRI cost), which is how the component proofs already stay ≈ 130 KiB. Until the full statement is converted, `PROOF_BUCKET` is **not** bumped — sizing the consensus bucket to the throwaway 5.4 MB wide-layout value would be churn.
 
-The foundational piece is in place: `circuit-spend::tall` proves a Poseidon2 sponge in the tall layout (one perm per row, capacity chained across rows via a transition constraint, digest bound to a public value through preprocessed `chain`/`digest` selector columns). A 4-block tall sponge proves to **143 KB** — already a ~38× reduction versus the wide fused proof, on a quarter of the work-per-perm. Scaled to the full ≈86-perm statement (≈128 rows, similar width) this stays comfortably under the 250 KB KPI. Remaining: fold commitment/nullifier/tag sponges, the two depth-32 Merkle paths, and the range/balance arithmetic into one tall trace with per-row-type selectors, then swap `StarkSpendVerifier` onto it.
+The foundational pieces are in place in `circuit-spend::tall`, both using one perm per row, transition-constraint chaining, and preprocessed selector columns:
+
+| Tall gadget | Perms (rows) | Proof |
+|---|---:|---:|
+| sponge, 4 blocks | 4 | 143.0 KB |
+| Merkle membership, depth 32 | 32 | 143.2 KB |
+
+The depth-32 Merkle gadget is the load-bearing conversion — the spend's two paths are 64 of its ~86 perms. Note the proof grew only ~200 bytes for 8× the permutations: in the tall layout, size is dominated by the FRI query count, not the trace height, so the full ≈86-perm statement (≈128 rows) lands well under the 250 KB KPI. Remaining: fold the commitment/nullifier/tag sponges, both Merkle paths, and the range/balance arithmetic into one tall trace with per-row-type selectors, then swap `StarkSpendVerifier` onto it.
