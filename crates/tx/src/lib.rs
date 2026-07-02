@@ -46,8 +46,15 @@ pub enum TxError {
 
 impl TxV1 {
     /// Digest binding every field except the proof and the PoW solution.
-    /// The PoW commits to this digest and the proof's public inputs contain
-    /// it, so any mutation of a bound field invalidates both (anti-malleability).
+    /// The PoW is solved over this digest, so it commits to `enc_outputs` and
+    /// `anchor.height`.
+    ///
+    /// NOTE (see `docs/security-review.md`, F-1): the *proof* does not currently
+    /// bind this digest. `StarkSpendVerifier` checks only `anchor.root`, the
+    /// nullifiers, the commitments and the mint — so `enc_outputs` and
+    /// `anchor.height` are authenticated by the PoW alone, not by the STARK.
+    /// Binding `enc_outputs` into the circuit is tracked as Gate-0 work; until
+    /// then this digest is not a full anti-malleability barrier.
     pub fn binding_digest(&self) -> [u8; 32] {
         let mut parts: Vec<&[u8]> = Vec::new();
         let h = self.anchor.height.to_le_bytes();
