@@ -15,6 +15,13 @@ use unknown_primitives::{ds, hash_parts};
 
 const POW_BODY_LEN: usize = 8;
 
+/// Wire-format version. v3: the spend proof transcript commits to the binding
+/// digest (security review F-1), so v2 proofs no longer verify. v2: the proof
+/// bucket is the real 192 KiB tall-layout STARK bucket (v1 carried the
+/// 192-byte dev-prover bucket). Consensus breaks, by design — older encodings
+/// are rejected.
+pub const TX_VERSION: u8 = 3;
+
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct TxV1 {
     pub anchor: Anchor,
@@ -41,8 +48,11 @@ pub enum TxError {
 
 impl TxV1 {
     /// Digest binding every field except the proof and the PoW solution.
-    /// The PoW commits to this digest and the proof's public inputs contain
-    /// it, so any mutation of a bound field invalidates both (anti-malleability).
+    /// The PoW is solved over this digest, and the spend proof's Fiat–Shamir
+    /// transcript commits to it as a public input (see
+    /// `circuit_spend::spend::SpendPublic`), so any mutation of a bound field
+    /// — including `enc_outputs` and `anchor.height` — invalidates the proof
+    /// (anti-malleability; security review F-1).
     pub fn binding_digest(&self) -> [u8; 32] {
         let mut parts: Vec<&[u8]> = Vec::new();
         let h = self.anchor.height.to_le_bytes();
@@ -72,7 +82,7 @@ impl TxV1 {
 
     pub fn encode(&self) -> Vec<u8> {
         let mut b = Vec::with_capacity(self.encoded_len());
-        b.push(1u8); // version
+        b.push(TX_VERSION);
         b.extend_from_slice(&self.anchor.height.to_le_bytes());
         b.extend_from_slice(&self.anchor.root);
         for nf in &self.nullifiers {
@@ -113,7 +123,7 @@ impl TxV1 {
             Ok(s)
         };
 
-        if take(&mut cur, 1)?[0] != 1 {
+        if take(&mut cur, 1)?[0] != TX_VERSION {
             return Err(TxError::Malformed);
         }
         let height = u64::from_le_bytes(take(&mut cur, 8)?.try_into().unwrap());

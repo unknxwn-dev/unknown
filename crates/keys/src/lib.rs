@@ -4,7 +4,8 @@
 //!  └─ sk   = KDF("…key.sk", seed)            spending key
 //!      ├─ ask = KDF("…key.ask", sk)          spend-authorizing key
 //!      ├─ nk  = KDF("…key.nk",  sk)          nullifier key
-//!      ├─ addr_tag = H("…key.addrtag", ask)  recipient tag bound into notes
+//!      ├─ addr_tag = Poseidon2(nk)           recipient tag bound into notes
+//!                                            (commits to nk; never reveals it)
 //!      ├─ x25519 static secret = KDF("…key.x25519", sk)
 //!      └─ ML-KEM-768 keypair from a 64-byte seed = KDF("…key.kemseed", sk)
 //!
@@ -15,7 +16,7 @@
 use ml_kem::array::Array;
 use ml_kem::kem::{Decapsulate, KeyExport};
 use ml_kem::{FromSeed, MlKem768};
-use unknown_primitives::{derive_key, ds, hash_parts};
+use unknown_primitives::{derive_key, ds};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 pub const MLKEM_PK_LEN: usize = 1184;
@@ -54,8 +55,14 @@ impl SpendingKey {
         derive_key(ds::NK, &self.sk)
     }
 
+    /// Recipient tag bound into notes: `addr_tag = Poseidon2(nk)`. Committing
+    /// to the nullifier key (rather than publishing it) is what the spend
+    /// circuit's ownership constraint (C3) checks — the spender proves knowledge
+    /// of the `nk` whose hash is the note's tag. Publishing `nk` directly would
+    /// let anyone compute the owner's nullifiers.
     pub fn addr_tag(&self) -> [u8; 32] {
-        hash_parts(ds::ADDR_TAG, &[&self.ask()])
+        let nk_f = unknown_poseidon::bytes_to_field(self.nk());
+        unknown_poseidon::pack(unknown_poseidon::sponge(&[nk_f]))
     }
 
     fn x25519_secret(&self) -> x25519_dalek::StaticSecret {

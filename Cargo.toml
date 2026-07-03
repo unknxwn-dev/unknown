@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/interfaces",
     "crates/primitives",
+    "crates/poseidon",
     "crates/keys",
     "crates/notes",
     "crates/tree",
@@ -11,6 +12,7 @@ members = [
     "crates/emission",
     "crates/tx",
     "crates/prover-dev",
+    "crates/circuit-spend",
     "crates/state",
     "crates/wallet",
     "crates/node",
@@ -21,19 +23,24 @@ version = "0.0.1"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 
+# Internal crates carry an explicit version (matching workspace.package) so a
+# published manifest is well-formed and cargo-deny's wildcard ban is satisfied;
+# the path is used for local builds.
 [workspace.dependencies]
-unknown-interfaces = { path = "crates/interfaces" }
-unknown-primitives = { path = "crates/primitives" }
-unknown-keys = { path = "crates/keys" }
-unknown-notes = { path = "crates/notes" }
-unknown-tree = { path = "crates/tree" }
-unknown-encryption = { path = "crates/encryption" }
-unknown-antispam-pow = { path = "crates/antispam-pow" }
-unknown-emission = { path = "crates/emission" }
-unknown-tx = { path = "crates/tx" }
-unknown-prover-dev = { path = "crates/prover-dev" }
-unknown-state = { path = "crates/state" }
-unknown-wallet = { path = "crates/wallet" }
+unknown-interfaces = { path = "crates/interfaces", version = "0.0.1" }
+unknown-primitives = { path = "crates/primitives", version = "0.0.1" }
+unknown-poseidon = { path = "crates/poseidon", version = "0.0.1" }
+unknown-keys = { path = "crates/keys", version = "0.0.1" }
+unknown-notes = { path = "crates/notes", version = "0.0.1" }
+unknown-tree = { path = "crates/tree", version = "0.0.1" }
+unknown-encryption = { path = "crates/encryption", version = "0.0.1" }
+unknown-antispam-pow = { path = "crates/antispam-pow", version = "0.0.1" }
+unknown-emission = { path = "crates/emission", version = "0.0.1" }
+unknown-tx = { path = "crates/tx", version = "0.0.1" }
+unknown-prover-dev = { path = "crates/prover-dev", version = "0.0.1" }
+unknown-circuit-spend = { path = "crates/circuit-spend", version = "0.0.1" }
+unknown-state = { path = "crates/state", version = "0.0.1" }
+unknown-wallet = { path = "crates/wallet", version = "0.0.1" }
 
 blake3 = "1.8"
 zeroize = { version = "1.9", features = ["derive"] }
@@ -46,6 +53,8 @@ rand_chacha = "0.9"
 thiserror = "2"
 hex = "0.4"
 proptest = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 [workspace.lints.rust]
 unsafe_code = "deny"

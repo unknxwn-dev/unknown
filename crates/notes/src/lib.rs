@@ -1,6 +1,16 @@
 //! Shielded note structure, commitments, nullifiers (WP3).
+//!
+//! Commitments and nullifiers are Poseidon2 over BabyBear (decision D3), via
+//! the shared [`unknown_poseidon`] hash — byte-for-byte what the STARK spend
+//! circuit proves. The note's byte-array fields are mapped to field elements
+//! (`value` to 8 byte-limbs; the 32-byte `addr_tag`/`rho`/`rseed`/`nk` via the
+//! canonical chunk decoding), and the resulting 8-element digest is packed back
+//! to 32 bytes for the wire/interface types. `rho` derivation and dummy-note
+//! entropy stay domain-separated BLAKE3 (they only feed the hash as field
+//! material, never appear in-circuit as preimages).
 
 use unknown_interfaces::{Commitment, Nullifier};
+use unknown_poseidon as poseidon;
 use unknown_primitives::{ds, hash_parts};
 
 pub const MEMO_LEN: usize = 64; // decision D10
@@ -18,20 +28,24 @@ pub struct Note {
 
 impl Note {
     pub fn commitment(&self) -> Commitment {
-        Commitment(hash_parts(
-            ds::NOTE_COMMITMENT,
-            &[
-                &self.value.to_le_bytes(),
-                &self.addr_tag,
-                &self.rho,
-                &self.rseed,
-            ],
-        ))
+        // cm = Poseidon2( value-limbs ‖ addr_tag ‖ rho ‖ rseed ), 4 rate-8 blocks.
+        let digest = poseidon::sponge(&[
+            poseidon::value_limbs(self.value),
+            poseidon::bytes_to_field(self.addr_tag),
+            poseidon::bytes_to_field(self.rho),
+            poseidon::bytes_to_field(self.rseed),
+        ]);
+        Commitment(poseidon::pack(digest))
     }
 
     /// Nullifier requires the nullifier key `nk` (spend authority side).
     pub fn nullifier(&self, nk: &[u8; 32]) -> Nullifier {
-        Nullifier(hash_parts(ds::NULLIFIER, &[nk, &self.rho]))
+        // nf = Poseidon2( nk ‖ rho ), 2 rate-8 blocks.
+        let digest = poseidon::sponge(&[
+            poseidon::bytes_to_field(*nk),
+            poseidon::bytes_to_field(self.rho),
+        ]);
+        Nullifier(poseidon::pack(digest))
     }
 
     /// A dummy input note (value 0) used to pad transactions to the uniform
