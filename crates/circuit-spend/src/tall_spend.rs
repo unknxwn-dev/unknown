@@ -749,7 +749,8 @@ mod tests {
     #[test]
     fn tall_spend_proves_and_verifies() {
         let (air, nk, inputs, outputs) = build(1, [600, 400], [700, 300]);
-        let (config, proof, vk, public) = prove_tall_spend(&air, nk, &inputs, &outputs, 0, [9u8; 32]);
+        let (config, proof, vk, public) =
+            prove_tall_spend(&air, nk, &inputs, &outputs, 0, [9u8; 32]);
         verify_tall_spend(&config, &air, &proof, &vk, &public).expect("tall spend verifies");
     }
 
@@ -806,14 +807,16 @@ mod tests {
                 rseed: digest(&mut rng),
             },
         ];
-        let (config, proof, vk, public) = prove_tall_spend(&air, nk, &inputs, &outputs, 1000, [9u8; 32]);
+        let (config, proof, vk, public) =
+            prove_tall_spend(&air, nk, &inputs, &outputs, 1000, [9u8; 32]);
         verify_tall_spend(&config, &air, &proof, &vk, &public).expect("mint verifies");
     }
 
     #[test]
     fn tampered_publics_are_rejected() {
         let (air, nk, inputs, outputs) = build(4, [600, 400], [700, 300]);
-        let (config, proof, vk, public) = prove_tall_spend(&air, nk, &inputs, &outputs, 0, [9u8; 32]);
+        let (config, proof, vk, public) =
+            prove_tall_spend(&air, nk, &inputs, &outputs, 0, [9u8; 32]);
         for f in [
             |p: &mut SpendPublic| p.root[0] += Val::ONE,
             |p: &mut SpendPublic| p.nullifiers[0][0] += Val::ONE,
@@ -837,7 +840,8 @@ mod tests {
     #[test]
     fn tampered_binding_digest_is_rejected() {
         let (air, nk, inputs, outputs) = build(7, [600, 400], [700, 300]);
-        let (config, proof, vk, public) = prove_tall_spend(&air, nk, &inputs, &outputs, 0, [9u8; 32]);
+        let (config, proof, vk, public) =
+            prove_tall_spend(&air, nk, &inputs, &outputs, 0, [9u8; 32]);
         let mut bad = public.clone();
         bad.binding = binding_limbs([10u8; 32]);
         assert!(

@@ -112,7 +112,8 @@ fn real_pipeline_tx_verifies_through_stark_spend_verifier() {
     // A stand-in tx binding digest (the real one hashes the tx body incl.
     // ciphertexts); the proof transcript commits to whatever is passed here.
     let binding = [42u8; 32];
-    let (pi, proof) = prove_to_interface(&air, map(nk), &inputs, &outputs, 0, anchor.height, binding);
+    let (pi, proof) =
+        prove_to_interface(&air, map(nk), &inputs, &outputs, 0, anchor.height, binding);
 
     // The circuit's public values ARE the pipeline's Poseidon2 digests.
     assert_eq!(
