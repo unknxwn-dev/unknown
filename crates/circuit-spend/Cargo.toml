@@ -1,0 +1,39 @@
+[package]
+name = "unknown-circuit-spend"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# WP6b — real STARK spend circuit (Gate A). Built on Plonky3 (BabyBear + FRI,
+# Poseidon2 width-16), the frozen D1/D2/D3 proof-system choices.
+
+[lints]
+workspace = true
+
+[dependencies]
+unknown-interfaces = { workspace = true }
+unknown-poseidon = { workspace = true }
+
+# Plonky3 (crates.io, pinned). MIT/Apache-2.0.
+p3-air = "0.6.1"
+p3-baby-bear = "0.6.1"
+p3-challenger = "0.6.1"
+p3-commit = "0.6.1"
+p3-dft = "0.6.1"
+p3-field = "0.6.1"
+p3-fri = "0.6.1"
+p3-matrix = "0.6.1"
+p3-merkle-tree = "0.6.1"
+p3-poseidon2 = "0.6.1"
+p3-poseidon2-air = "0.6.1"
+p3-symmetric = "0.6.1"
+p3-uni-stark = "0.6.1"
+p3-util = "0.6.1"
+
+rand = "0.10"
+postcard = { version = "1", features = ["alloc"] }
+
+[dev-dependencies]
+unknown-notes = { workspace = true }
+unknown-primitives = { workspace = true }
+unknown-tree = { workspace = true }
