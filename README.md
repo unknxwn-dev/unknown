@@ -41,3 +41,7 @@ Start here:
   emission governance model (decrease-easy / increase-hard, zero-emission as earned end state).
 - [`docs/implementation-status.md`](docs/implementation-status.md) — what the `crates/` prototype
   builds today, mapped to engineering-plan work packages.
+- [`docs/stablecoin-bank-api-plan.md`](docs/stablecoin-bank-api-plan.md) — plan for a five-coin
+  stablecoin layer with a bank-integration API: mint/redeem gateway architecture, required
+  on-chain changes (multi-asset notes, issuer keys, selective disclosure), API surface, and
+  phased roadmap.
