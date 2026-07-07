@@ -38,6 +38,7 @@ recipients exist only inside the wallets, and the public supply audit
 | `antispam-pow` | WP16a | ✅ (hashcash) | Uniform-difficulty PoW with the EquiX solve/verify interface |
 | `wallet` | WP14 | ✅ | Note management, input selection, transfer builder, scan, spend-marking |
 | `node` | WP13 | ✅ (demo) | Integrated single-sequencer devnet binary + lifecycle test |
+| `stablecoin-gateway` | Stablecoin G1/G2 | 🚧 scaffold | Bank-facing sandbox domain model, resource state machines, `SettlementLedger` / `BankConnector` traits, simulated bank connector |
 
 ## Deliberately not yet built (and why)
 

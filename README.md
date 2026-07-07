@@ -52,3 +52,11 @@ Start here:
   bank/customer pitch, and business model: the sandbox-vs-real-testnet distinction, the
   "three calls to move money" demo surface, and the five revenue engines (reserve float,
   cross-currency FX spread, transaction fees, BaaS licensing, enterprise).
+
+## Stablecoin gateway buildout
+
+The first code slice for the bank-facing sandbox lives in
+[`crates/stablecoin-gateway`](crates/stablecoin-gateway). It defines the G1/G2
+domain model, resource state machines, the chain-side `SettlementLedger` trait,
+the fiat-side `BankConnector` trait, and a deterministic `SimulatedBankConnector`
+for the pitch sandbox.

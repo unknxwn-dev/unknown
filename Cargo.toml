@@ -14,6 +14,7 @@ members = [
     "crates/state",
     "crates/wallet",
     "crates/node",
+    "crates/stablecoin-gateway",
 ]
 
 [workspace.package]
@@ -34,6 +35,7 @@ unknown-tx = { path = "crates/tx" }
 unknown-prover-dev = { path = "crates/prover-dev" }
 unknown-state = { path = "crates/state" }
 unknown-wallet = { path = "crates/wallet" }
+unknown-stablecoin-gateway = { path = "crates/stablecoin-gateway" }
 
 blake3 = "1.8"
 zeroize = { version = "1.9", features = ["derive"] }
