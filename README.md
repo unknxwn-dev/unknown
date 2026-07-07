@@ -45,6 +45,9 @@ Start here:
   stablecoin layer with a bank-integration API: mint/redeem gateway architecture, required
   on-chain changes (multi-asset notes, issuer keys, selective disclosure), API surface, and
   phased roadmap.
+- [`docs/stablecoin-bank-api-openapi.yaml`](docs/stablecoin-bank-api-openapi.yaml) — draft `/v1`
+  OpenAPI contract for the G1/G2 sandbox gateway: assets, customers, deposits, transfers,
+  redemptions, reconciliation, idempotency, and signed webhooks.
 - [`docs/stablecoin-go-to-market.md`](docs/stablecoin-go-to-market.md) — testnet-readiness,
   bank/customer pitch, and business model: the sandbox-vs-real-testnet distinction, the
   "three calls to move money" demo surface, and the five revenue engines (reserve float,

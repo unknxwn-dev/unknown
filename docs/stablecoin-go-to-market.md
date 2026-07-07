@@ -1,6 +1,7 @@
 # Stablecoin Network — Testnet Readiness, Bank Pitch & Business Model
 
-*Status: strategy. Companion to [`stablecoin-bank-api-plan.md`](stablecoin-bank-api-plan.md).
+*Status: strategy. Companion to [`stablecoin-bank-api-plan.md`](stablecoin-bank-api-plan.md)
+and the draft [`/v1` OpenAPI contract](stablecoin-bank-api-openapi.yaml).
 Answers three questions: what "testnet ready" actually means here, what to put in
 front of a bank to show how easy moving money is, and how the business makes money
 if "it's just an API that moves money."*

@@ -2,7 +2,8 @@
 
 *Status: proposal. Covers how a five-coin stablecoin network built on this
 chain connects to banks, what has to change on-chain, and the design of the
-off-chain API gateway that does the connecting.*
+off-chain API gateway that does the connecting. The first concrete `/v1`
+contract draft lives in [`stablecoin-bank-api-openapi.yaml`](stablecoin-bank-api-openapi.yaml).*
 
 ---
 
@@ -144,7 +145,8 @@ checks against it. Never derive state by re-reading the bank statement ad hoc.
 
 This is the product surface a partner bank or fintech integrates with. REST
 + JSON, OAuth2 client-credentials (mTLS for high-tier partners), versioned
-under `/v1`.
+under `/v1`. The G1/G2 sandbox subset is specified in
+[`stablecoin-bank-api-openapi.yaml`](stablecoin-bank-api-openapi.yaml).
 
 ### 4.1 Endpoints (v1 surface)
 

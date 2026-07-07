@@ -1,0 +1,1109 @@
+openapi: 3.1.0
+info:
+  title: Stablecoin Bank-Integration API
+  version: 1.0.0-draft
+  summary: Draft /v1 contract for the G1/G2 bank-facing stablecoin sandbox.
+  description: |
+    Draft contract for the bank-facing issuance gateway described in
+    `docs/stablecoin-bank-api-plan.md` and `docs/stablecoin-go-to-market.md`.
+
+    This is the G1/G2 sandbox contract: partner-only, asynchronous, idempotent,
+    backed by an abstract Ledger interface and a simulated BankConnector.
+    Production rails, real KYC/sanctions providers, and real selective-disclosure
+    proofs are intentionally represented as explicit statuses and references.
+
+    Sandbox defaults:
+    - assets: coinUSD, coinEUR, coinGBP, coinNGN, coinJPY
+    - settlement: simulated bank connector
+    - KYC: stubbed states, default approval available in sandbox
+    - ledger: abstract ledger adapter, may point at the current devnet or a stub
+servers:
+  - url: https://sandbox.example.com/v1
+    description: Hosted G1/G2 sandbox
+  - url: http://localhost:8080/v1
+    description: Local gateway development
+
+security:
+  - OAuth2ClientCredentials:
+      - sandbox
+
+tags:
+  - name: Assets
+  - name: Customers
+  - name: Deposits
+  - name: Transfers
+  - name: Redemptions
+  - name: Reports
+  - name: Webhooks
+
+paths:
+  /assets:
+    get:
+      tags: [Assets]
+      operationId: listAssets
+      summary: List configured stablecoin assets.
+      responses:
+        "200":
+          description: Assets configured for the partner.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [assets]
+                properties:
+                  assets:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Asset"
+              examples:
+                sandbox:
+                  value:
+                    assets:
+                      - id: coinUSD
+                        currency: USD
+                        peg: "1 coinUSD = 1 USD"
+                        decimals: 2
+                        status: active
+                        sandbox: true
+                      - id: coinEUR
+                        currency: EUR
+                        peg: "1 coinEUR = 1 EUR"
+                        decimals: 2
+                        status: active
+                        sandbox: true
+
+  /assets/{asset_id}/supply:
+    get:
+      tags: [Assets]
+      operationId: getAssetSupply
+      summary: Get circulating supply and latest reserve attestation for one asset.
+      parameters:
+        - $ref: "#/components/parameters/AssetId"
+      responses:
+        "200":
+          description: Supply and backing status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetSupply"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /customers:
+    post:
+      tags: [Customers]
+      operationId: createCustomer
+      summary: Create a partner customer and start sandbox KYC.
+      description: |
+        G1/G2 uses a KYC stub. Production replaces `sandbox_kyc_mode` with a
+        real KYC provider workflow without changing the resource state shape.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCustomerRequest"
+      responses:
+        "202":
+          description: Customer accepted for KYC processing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Customer"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /customers/{customer_id}:
+    get:
+      tags: [Customers]
+      operationId: getCustomer
+      summary: Get customer KYC and compliance status.
+      parameters:
+        - $ref: "#/components/parameters/CustomerId"
+      responses:
+        "200":
+          description: Customer status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Customer"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /customers/{customer_id}/accounts:
+    post:
+      tags: [Customers]
+      operationId: createCustomerAccount
+      summary: Provision a shielded account and register disclosure material.
+      description: |
+        In the sandbox, `viewing_key_ref` may be a placeholder reference. Before
+        production, this endpoint must register real per-account viewing keys
+        or an equivalent selective-disclosure grant.
+      parameters:
+        - $ref: "#/components/parameters/CustomerId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAccountRequest"
+      responses:
+        "202":
+          description: Account provisioned or queued for provisioning.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /deposits:
+    post:
+      tags: [Deposits]
+      operationId: createDeposit
+      summary: Create a fiat-in deposit expectation.
+      description: |
+        Returns reserve-account instructions and a unique reference code. The
+        sandbox BankConnector can settle this deterministically; production
+        connectors wait for bank webhook or statement confirmation.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDepositRequest"
+      responses:
+        "202":
+          description: Deposit expectation created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Deposit"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /deposits/{deposit_id}:
+    get:
+      tags: [Deposits]
+      operationId: getDeposit
+      summary: Get deposit state.
+      parameters:
+        - $ref: "#/components/parameters/DepositId"
+      responses:
+        "200":
+          description: Deposit state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Deposit"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /transfers:
+    post:
+      tags: [Transfers]
+      operationId: createTransfer
+      summary: Create a gateway-mediated shielded transfer.
+      description: |
+        For G1/G2 this is a sandbox-mediated on-chain transfer between
+        provisioned accounts. Production requires real disclosure proof
+        attachment for Travel Rule cases.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTransferRequest"
+      responses:
+        "202":
+          description: Transfer accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transfer"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /transfers/{transfer_id}:
+    get:
+      tags: [Transfers]
+      operationId: getTransfer
+      summary: Get transfer state.
+      parameters:
+        - $ref: "#/components/parameters/TransferId"
+      responses:
+        "200":
+          description: Transfer state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transfer"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /redemptions:
+    post:
+      tags: [Redemptions]
+      operationId: createRedemption
+      summary: Redeem stablecoin for fiat payout.
+      description: |
+        Burns stablecoin after compliance checks, then instructs the
+        BankConnector to send fiat. In G1/G2 the payout is simulated.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRedemptionRequest"
+      responses:
+        "202":
+          description: Redemption accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Redemption"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /redemptions/{redemption_id}:
+    get:
+      tags: [Redemptions]
+      operationId: getRedemption
+      summary: Get redemption state.
+      parameters:
+        - $ref: "#/components/parameters/RedemptionId"
+      responses:
+        "200":
+          description: Redemption state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Redemption"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /reports/reconciliation:
+    get:
+      tags: [Reports]
+      operationId: getReconciliationReport
+      summary: Get reserve-vs-ledger reconciliation for one day.
+      parameters:
+        - name: asset_id
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AssetId"
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Reconciliation report.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [date, reports]
+                properties:
+                  date:
+                    type: string
+                    format: date
+                  reports:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ReconciliationReport"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /webhook-endpoints:
+    post:
+      tags: [Webhooks]
+      operationId: createWebhookEndpoint
+      summary: Register a partner webhook endpoint.
+      description: |
+        Sandbox self-service endpoint registration. Production may restrict
+        this to onboarding operations to reduce SSRF and misrouting risk.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWebhookEndpointRequest"
+      responses:
+        "202":
+          description: Webhook endpoint registered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookEndpoint"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+webhooks:
+  deposit.settled:
+    post:
+      operationId: webhookDepositSettled
+      summary: Fiat deposit settled at the bank connector.
+      parameters:
+        - $ref: "#/components/parameters/WebhookSignature"
+        - $ref: "#/components/parameters/WebhookTimestamp"
+      requestBody:
+        $ref: "#/components/requestBodies/WebhookEvent"
+      responses:
+        "200":
+          description: Partner acknowledged event.
+  mint.confirmed:
+    post:
+      operationId: webhookMintConfirmed
+      summary: Mint transaction confirmed by the ledger.
+      parameters:
+        - $ref: "#/components/parameters/WebhookSignature"
+        - $ref: "#/components/parameters/WebhookTimestamp"
+      requestBody:
+        $ref: "#/components/requestBodies/WebhookEvent"
+      responses:
+        "200":
+          description: Partner acknowledged event.
+  transfer.confirmed:
+    post:
+      operationId: webhookTransferConfirmed
+      summary: Transfer transaction confirmed by the ledger.
+      parameters:
+        - $ref: "#/components/parameters/WebhookSignature"
+        - $ref: "#/components/parameters/WebhookTimestamp"
+      requestBody:
+        $ref: "#/components/requestBodies/WebhookEvent"
+      responses:
+        "200":
+          description: Partner acknowledged event.
+  redemption.burned:
+    post:
+      operationId: webhookRedemptionBurned
+      summary: Redemption burn confirmed by the ledger.
+      parameters:
+        - $ref: "#/components/parameters/WebhookSignature"
+        - $ref: "#/components/parameters/WebhookTimestamp"
+      requestBody:
+        $ref: "#/components/requestBodies/WebhookEvent"
+      responses:
+        "200":
+          description: Partner acknowledged event.
+  payout.sent:
+    post:
+      operationId: webhookPayoutSent
+      summary: Fiat payout sent by the bank connector.
+      parameters:
+        - $ref: "#/components/parameters/WebhookSignature"
+        - $ref: "#/components/parameters/WebhookTimestamp"
+      requestBody:
+        $ref: "#/components/requestBodies/WebhookEvent"
+      responses:
+        "200":
+          description: Partner acknowledged event.
+  payout.failed:
+    post:
+      operationId: webhookPayoutFailed
+      summary: Fiat payout failed and requires retry or manual review.
+      parameters:
+        - $ref: "#/components/parameters/WebhookSignature"
+        - $ref: "#/components/parameters/WebhookTimestamp"
+      requestBody:
+        $ref: "#/components/requestBodies/WebhookEvent"
+      responses:
+        "200":
+          description: Partner acknowledged event.
+  customer.kyc_updated:
+    post:
+      operationId: webhookCustomerKycUpdated
+      summary: Customer KYC state changed.
+      parameters:
+        - $ref: "#/components/parameters/WebhookSignature"
+        - $ref: "#/components/parameters/WebhookTimestamp"
+      requestBody:
+        $ref: "#/components/requestBodies/WebhookEvent"
+      responses:
+        "200":
+          description: Partner acknowledged event.
+  reconciliation.discrepancy:
+    post:
+      operationId: webhookReconciliationDiscrepancy
+      summary: Reserve/internal/on-chain reconciliation drift detected.
+      parameters:
+        - $ref: "#/components/parameters/WebhookSignature"
+        - $ref: "#/components/parameters/WebhookTimestamp"
+      requestBody:
+        $ref: "#/components/requestBodies/WebhookEvent"
+      responses:
+        "200":
+          description: Partner acknowledged event.
+
+components:
+  securitySchemes:
+    OAuth2ClientCredentials:
+      type: oauth2
+      description: OAuth2 client credentials. Production high-tier partners also use mTLS.
+      flows:
+        clientCredentials:
+          tokenUrl: https://sandbox.example.com/oauth/token
+          scopes:
+            sandbox: Use the sandbox API.
+            assets:read: Read asset and supply data.
+            customers:write: Create customers and accounts.
+            money:write: Create deposits, transfers, and redemptions.
+            reports:read: Read reconciliation reports.
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 128
+      description: |
+        Required on every POST. Reusing the same key with the same body returns
+        the original response. Reusing it with a different body returns 409.
+    AssetId:
+      name: asset_id
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/AssetId"
+    CustomerId:
+      name: customer_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    DepositId:
+      name: deposit_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    TransferId:
+      name: transfer_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    RedemptionId:
+      name: redemption_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    WebhookSignature:
+      name: X-Stablecoin-Signature
+      in: header
+      required: true
+      schema:
+        type: string
+      description: HMAC-SHA256 over `timestamp + "." + raw_body`.
+    WebhookTimestamp:
+      name: X-Stablecoin-Timestamp
+      in: header
+      required: true
+      schema:
+        type: string
+      description: Unix timestamp. Consumers reject events outside the replay window.
+
+  requestBodies:
+    WebhookEvent:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/WebhookEvent"
+
+  responses:
+    BadRequest:
+      description: Request validation failed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Conflict:
+      description: Idempotency or state-machine conflict.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    Error:
+      type: object
+      required: [error, error_code, error_category]
+      properties:
+        error:
+          type: string
+        error_code:
+          type: string
+          examples: [idempotency_conflict]
+        error_category:
+          type: string
+          enum: [validation, auth, compliance, limits, conflict, upstream, internal]
+        request_id:
+          type: string
+
+    AssetId:
+      type: string
+      pattern: "^coin[A-Z]{3}$"
+      examples: [coinUSD, coinEUR, coinGBP, coinNGN, coinJPY]
+
+    MinorUnitAmount:
+      type: string
+      pattern: "^(0|[1-9][0-9]{0,38})$"
+      description: Integer minor units as a string. Never floating point.
+      examples: ["10000"]
+
+    Timestamp:
+      type: string
+      format: date-time
+
+    ResourceRef:
+      type: object
+      required: [type, id]
+      properties:
+        type:
+          type: string
+        id:
+          type: string
+
+    Asset:
+      type: object
+      required: [id, currency, peg, decimals, status, sandbox]
+      properties:
+        id:
+          $ref: "#/components/schemas/AssetId"
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          examples: [USD]
+        peg:
+          type: string
+          examples: ["1 coinUSD = 1 USD"]
+        decimals:
+          type: integer
+          minimum: 0
+          maximum: 9
+          examples: [2]
+        status:
+          type: string
+          enum: [active, paused, disabled]
+        sandbox:
+          type: boolean
+
+    AssetSupply:
+      type: object
+      required:
+        - asset_id
+        - circulating_supply
+        - reserve_balance
+        - internal_ledger_balance
+        - reconciliation_status
+        - as_of
+      properties:
+        asset_id:
+          $ref: "#/components/schemas/AssetId"
+        circulating_supply:
+          $ref: "#/components/schemas/MinorUnitAmount"
+        reserve_balance:
+          $ref: "#/components/schemas/MinorUnitAmount"
+        internal_ledger_balance:
+          $ref: "#/components/schemas/MinorUnitAmount"
+        reconciliation_status:
+          type: string
+          enum: [balanced, pending, discrepancy]
+        attestation:
+          anyOf:
+            - $ref: "#/components/schemas/Attestation"
+            - type: "null"
+        as_of:
+          $ref: "#/components/schemas/Timestamp"
+
+    Attestation:
+      type: object
+      required: [id, period_start, period_end, status]
+      properties:
+        id:
+          type: string
+        period_start:
+          type: string
+          format: date
+        period_end:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [sandbox, pending, published]
+        url:
+          type: string
+          format: uri
+
+    CreateCustomerRequest:
+      type: object
+      required: [partner_customer_ref]
+      properties:
+        partner_customer_ref:
+          type: string
+          maxLength: 128
+          description: Partner's opaque customer reference. Avoid PII.
+        sandbox_kyc_mode:
+          type: string
+          enum: [auto_approve, manual_pending, block]
+          default: auto_approve
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+
+    Customer:
+      type: object
+      required: [id, partner_customer_ref, kyc_status, compliance_status, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        partner_customer_ref:
+          type: string
+        kyc_status:
+          type: string
+          enum: [pending, approved, blocked]
+        compliance_status:
+          type: string
+          enum: [clear, review, blocked]
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+
+    CreateAccountRequest:
+      type: object
+      required: [asset_allowlist]
+      properties:
+        asset_allowlist:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/AssetId"
+        viewing_key_ref:
+          type: string
+          description: Sandbox placeholder or production disclosure-grant reference.
+        disclosure_mode:
+          type: string
+          enum: [sandbox_stub, viewing_key, payment_disclosure]
+          default: sandbox_stub
+
+    Account:
+      type: object
+      required: [id, customer_id, address, asset_allowlist, disclosure_status, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        customer_id:
+          type: string
+          format: uuid
+        address:
+          type: string
+          description: Shielded chain address controlled by the customer or gateway flow.
+        asset_allowlist:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssetId"
+        disclosure_status:
+          type: string
+          enum: [stubbed, registered, missing, invalid]
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+
+    CreateDepositRequest:
+      type: object
+      required: [customer_id, account_id, asset_id, amount]
+      properties:
+        customer_id:
+          type: string
+          format: uuid
+        account_id:
+          type: string
+          format: uuid
+        asset_id:
+          $ref: "#/components/schemas/AssetId"
+        amount:
+          $ref: "#/components/schemas/MinorUnitAmount"
+        simulate_settlement:
+          type: boolean
+          default: true
+          description: Sandbox-only shortcut for deterministic bank settlement.
+
+    Deposit:
+      type: object
+      required:
+        - id
+        - customer_id
+        - account_id
+        - asset_id
+        - amount
+        - state
+        - reserve_instructions
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        customer_id:
+          type: string
+          format: uuid
+        account_id:
+          type: string
+          format: uuid
+        asset_id:
+          $ref: "#/components/schemas/AssetId"
+        amount:
+          $ref: "#/components/schemas/MinorUnitAmount"
+        state:
+          type: string
+          enum: [expected, detected, settled, minting, minted, cancelled, failed]
+        reserve_instructions:
+          $ref: "#/components/schemas/ReserveInstructions"
+        bank_event:
+          anyOf:
+            - $ref: "#/components/schemas/BankEventRef"
+            - type: "null"
+        ledger_tx:
+          anyOf:
+            - $ref: "#/components/schemas/LedgerTxRef"
+            - type: "null"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+
+    ReserveInstructions:
+      type: object
+      required: [reference_code, currency, beneficiary_name, account_hint]
+      properties:
+        reference_code:
+          type: string
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        beneficiary_name:
+          type: string
+        account_hint:
+          type: string
+          description: Masked or sandbox reserve-account details.
+        expires_at:
+          $ref: "#/components/schemas/Timestamp"
+
+    CreateTransferRequest:
+      type: object
+      required: [from_account_id, to_account_id, asset_id, amount]
+      properties:
+        from_account_id:
+          type: string
+          format: uuid
+        to_account_id:
+          type: string
+          format: uuid
+        asset_id:
+          $ref: "#/components/schemas/AssetId"
+        amount:
+          $ref: "#/components/schemas/MinorUnitAmount"
+        travel_rule:
+          $ref: "#/components/schemas/TravelRulePayload"
+        disclosure_proof_ref:
+          type: string
+          description: Sandbox placeholder or production payment-disclosure proof reference.
+
+    Transfer:
+      type: object
+      required: [id, from_account_id, to_account_id, asset_id, amount, state, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        from_account_id:
+          type: string
+          format: uuid
+        to_account_id:
+          type: string
+          format: uuid
+        asset_id:
+          $ref: "#/components/schemas/AssetId"
+        amount:
+          $ref: "#/components/schemas/MinorUnitAmount"
+        state:
+          type: string
+          enum: [accepted, compliance_check, proving, submitted, confirmed, failed]
+        ledger_tx:
+          anyOf:
+            - $ref: "#/components/schemas/LedgerTxRef"
+            - type: "null"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+
+    CreateRedemptionRequest:
+      type: object
+      required: [customer_id, account_id, asset_id, amount, payout_account]
+      properties:
+        customer_id:
+          type: string
+          format: uuid
+        account_id:
+          type: string
+          format: uuid
+        asset_id:
+          $ref: "#/components/schemas/AssetId"
+        amount:
+          $ref: "#/components/schemas/MinorUnitAmount"
+        payout_account:
+          $ref: "#/components/schemas/PayoutAccount"
+        simulate_payout:
+          type: boolean
+          default: true
+          description: Sandbox-only shortcut for deterministic payout completion.
+
+    Redemption:
+      type: object
+      required: [id, customer_id, account_id, asset_id, amount, state, payout_account, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        customer_id:
+          type: string
+          format: uuid
+        account_id:
+          type: string
+          format: uuid
+        asset_id:
+          $ref: "#/components/schemas/AssetId"
+        amount:
+          $ref: "#/components/schemas/MinorUnitAmount"
+        state:
+          type: string
+          enum:
+            - accepted
+            - compliance_check
+            - awaiting_burn
+            - burning
+            - burned
+            - payout_pending
+            - payout_sent
+            - payout_failed
+            - failed
+        payout_account:
+          $ref: "#/components/schemas/PayoutAccount"
+        bank_event:
+          anyOf:
+            - $ref: "#/components/schemas/BankEventRef"
+            - type: "null"
+        ledger_tx:
+          anyOf:
+            - $ref: "#/components/schemas/LedgerTxRef"
+            - type: "null"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+
+    PayoutAccount:
+      type: object
+      required: [currency, account_ref]
+      properties:
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        account_ref:
+          type: string
+          description: Tokenized payout-account reference. Do not put raw PII in sandbox logs.
+        rail:
+          type: string
+          enum: [sandbox, ach, fedwire, sepa, fps, chaps, local, swift]
+          default: sandbox
+
+    TravelRulePayload:
+      type: object
+      description: IVMS-101-style payload. Stubbed in G1/G2; required for real VASP transfers.
+      properties:
+        originator_ref:
+          type: string
+        beneficiary_ref:
+          type: string
+        payload_ref:
+          type: string
+        mode:
+          type: string
+          enum: [not_required, sandbox_stub, ivms101]
+          default: sandbox_stub
+
+    LedgerTxRef:
+      type: object
+      required: [tx_id, status]
+      properties:
+        tx_id:
+          type: string
+        status:
+          type: string
+          enum: [submitted, confirmed, failed]
+        checkpoint:
+          type: string
+        confirmed_at:
+          $ref: "#/components/schemas/Timestamp"
+        insecure_dev_ledger:
+          type: boolean
+          description: True when backed by the current labeled-insecure devnet/prover.
+
+    BankEventRef:
+      type: object
+      required: [event_id, connector, status]
+      properties:
+        event_id:
+          type: string
+        connector:
+          type: string
+          enum: [simulated, bank_api, iso20022_file, open_banking]
+        status:
+          type: string
+          enum: [detected, settled, sent, failed]
+        occurred_at:
+          $ref: "#/components/schemas/Timestamp"
+
+    ReconciliationReport:
+      type: object
+      required:
+        - asset_id
+        - reserve_balance
+        - internal_ledger_balance
+        - circulating_supply
+        - delta
+        - status
+        - generated_at
+      properties:
+        asset_id:
+          $ref: "#/components/schemas/AssetId"
+        reserve_balance:
+          $ref: "#/components/schemas/MinorUnitAmount"
+        internal_ledger_balance:
+          $ref: "#/components/schemas/MinorUnitAmount"
+        circulating_supply:
+          $ref: "#/components/schemas/MinorUnitAmount"
+        delta:
+          type: string
+          pattern: "^-?[0-9]{1,39}$"
+        status:
+          type: string
+          enum: [balanced, pending, discrepancy]
+        generated_at:
+          $ref: "#/components/schemas/Timestamp"
+        discrepancy_reason:
+          type: string
+
+    CreateWebhookEndpointRequest:
+      type: object
+      required: [url, event_types]
+      properties:
+        url:
+          type: string
+          format: uri
+        event_types:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/WebhookEventType"
+
+    WebhookEndpoint:
+      type: object
+      required: [id, url, event_types, status, secret_once]
+      properties:
+        id:
+          type: string
+          format: uuid
+        url:
+          type: string
+          format: uri
+        event_types:
+          type: array
+          items:
+            $ref: "#/components/schemas/WebhookEventType"
+        status:
+          type: string
+          enum: [active, disabled]
+        secret_once:
+          type: string
+          description: Returned only at creation time; store it for HMAC verification.
+
+    WebhookEventType:
+      type: string
+      enum:
+        - deposit.settled
+        - mint.confirmed
+        - transfer.confirmed
+        - redemption.burned
+        - payout.sent
+        - payout.failed
+        - customer.kyc_updated
+        - reconciliation.discrepancy
+
+    WebhookEvent:
+      type: object
+      required: [id, type, created_at, resource, data]
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          $ref: "#/components/schemas/WebhookEventType"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        resource:
+          $ref: "#/components/schemas/ResourceRef"
+        data:
+          type: object
+          additionalProperties: true
