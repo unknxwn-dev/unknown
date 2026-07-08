@@ -1,0 +1,19 @@
+[package]
+name = "unknown-testkit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+unknown-primitives.workspace = true
+unknown-notes.workspace = true
+unknown-keys.workspace = true
+unknown-interfaces.workspace = true
+hex.workspace = true
+
+[[bin]]
+name = "gen-vectors"
+path = "src/gen.rs"
+
+[lints]
+workspace = true

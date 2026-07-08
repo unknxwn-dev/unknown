@@ -43,5 +43,10 @@ Start here:
   emission governance model (decrease-easy / increase-hard, zero-emission as earned end state).
 - [`specs/anchors.md`](specs/anchors.md) — normative anchor spec: how shielded membership proofs
   are anchored on a concurrent deterministic-finality ledger (the design's central seam).
+- [`specs/notes.md`](specs/notes.md) — normative note/key/address/ciphertext spec.
+- [`specs/threat-model.md`](specs/threat-model.md) — adversaries, defences, and where each is
+  enforced (spec + code), with prototype coverage marked.
+- [`specs/vectors/core.md`](specs/vectors/core.md) — frozen golden vectors (cross-implementation
+  conformance target).
 - [`docs/implementation-status.md`](docs/implementation-status.md) — what the `crates/` prototype
   builds today, mapped to engineering-plan work packages.

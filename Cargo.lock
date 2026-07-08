@@ -1005,6 +1005,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "unknown-testkit"
+version = "0.0.1"
+dependencies = [
+ "hex",
+ "unknown-interfaces",
+ "unknown-keys",
+ "unknown-notes",
+ "unknown-primitives",
+]
+
+[[package]]
 name = "unknown-tree"
 version = "0.0.1"
 dependencies = [

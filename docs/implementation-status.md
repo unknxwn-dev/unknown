@@ -44,6 +44,7 @@ recipients exist only inside the wallets, and the public supply audit
 | `wallet` | WP14 | ✅ | Note management, input selection, transfer builder, scan, spend-marking |
 | `node` | WP13 | ✅ (demo) | Integrated single-sequencer devnet binary + lifecycle test |
 | `sim` | WP17 | ✅ | Off-chain economics: PoW spam squeeze, emission/inflation/validator-revenue calibration, mint-farming check |
+| `testkit` | WP0 | ✅ | Golden-vector fixtures + conformance test frozen to `specs/vectors/core.md`; regenerate via `gen-vectors` |
 
 ## Deliberately not yet built (and why)
 
