@@ -3,6 +3,7 @@ name = "unknown-knockout"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish.workspace = true
 
 [dependencies]
 unknown-interfaces.workspace = true

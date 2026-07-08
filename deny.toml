@@ -18,7 +18,10 @@ confidence-threshold = 0.9
 
 [bans]
 multiple-versions = "warn"
+# Ban wildcard versions for real crates.io deps, but allow internal path deps
+# (which have no version and would otherwise register as wildcards).
 wildcards = "deny"
+allow-wildcard-paths = true
 
 [advisories]
 yanked = "deny"
