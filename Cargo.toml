@@ -8,6 +8,7 @@ members = [
     "crates/tree",
     "crates/encryption",
     "crates/antispam-pow",
+    "crates/antispam-quota",
     "crates/emission",
     "crates/tx",
     "crates/prover-dev",
@@ -32,6 +33,7 @@ unknown-notes = { path = "crates/notes" }
 unknown-tree = { path = "crates/tree" }
 unknown-encryption = { path = "crates/encryption" }
 unknown-antispam-pow = { path = "crates/antispam-pow" }
+unknown-antispam-quota = { path = "crates/antispam-quota" }
 unknown-emission = { path = "crates/emission" }
 unknown-tx = { path = "crates/tx" }
 unknown-prover-dev = { path = "crates/prover-dev" }

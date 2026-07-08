@@ -1,0 +1,12 @@
+[package]
+name = "unknown-antispam-quota"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+unknown-interfaces.workspace = true
+unknown-primitives.workspace = true
+
+[lints]
+workspace = true

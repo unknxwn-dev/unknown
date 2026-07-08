@@ -862,6 +862,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "unknown-antispam-quota"
+version = "0.0.1"
+dependencies = [
+ "unknown-interfaces",
+ "unknown-primitives",
+]
+
+[[package]]
 name = "unknown-consensus"
 version = "0.0.1"
 dependencies = [

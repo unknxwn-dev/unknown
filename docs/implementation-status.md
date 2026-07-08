@@ -40,6 +40,7 @@ recipients exist only inside the wallets, and the public supply audit
 | `consensus` | WP11 | ✅ (model) | Deterministic BFT-DAG ordering model + Gate-C adversarial tests: replica agreement, order-independence, single-winner double-spend, cross-round replay rejection, partition-heal, byzantine-drop. Async AlephBFT/libp2p integration still to come |
 | `emission` | WP15 | ✅ | Float-free `E(h)` decay-to-tail schedule, weight-proportional distribution, β=0 |
 | `antispam-pow` | WP16a | ✅ (hashcash) | Uniform-difficulty PoW with the EquiX solve/verify interface |
+| `antispam-quota` | WP16b | ✅ (core) | RLN-style anonymous rate limiting: stake→quota, per-slot rate nullifiers, and Shamir secret-recovery slashing on slot reuse. Primary feeless defence; wire/circuit integration pending |
 | `wallet` | WP14 | ✅ | Note management, input selection, transfer builder, scan, spend-marking |
 | `node` | WP13 | ✅ (demo) | Integrated single-sequencer devnet binary + lifecycle test |
 | `sim` | WP17 | ✅ | Off-chain economics: PoW spam squeeze, emission/inflation/validator-revenue calibration, mint-farming check |
@@ -60,7 +61,12 @@ These are sequenced behind gates in the engineering plan, not overlooked:
   across networked nodes; the ledger side is done.
 - **Persistence (RocksDB), P2P (libp2p), gRPC (tonic)** — WP10/12/13 backends;
   the logic they wrap is implemented and tested in-memory behind the same shapes.
-- **Quota anti-spam (WP16b), proof aggregation, FMD scanning** — Phase 3 / scale.
+- **Quota-lane wire integration** — the RLN quota core (`antispam-quota`) is
+  implemented and tested; what remains is carrying its rate proof in `TxV1`
+  (a second anti-spam tag) and enforcing it in the state machine with a
+  `QuotaRegistry`, alongside the ZK proof that the nullifier derives from a
+  staked quota note.
+- **Proof aggregation, FMD/OMR scanning, out-of-band delivery** — Phase 3 / scale.
 
 ## How the pieces enforce the design's privacy claims
 
