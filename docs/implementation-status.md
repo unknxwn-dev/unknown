@@ -54,7 +54,12 @@ These are sequenced behind gates in the engineering plan, not overlooked:
   insecure (a tag over public inputs, see its module docs). Replacing it is
   Gate-A work and the single largest remaining task. The interface
   (`SpendVerifier`) and the constraint spec (`check_spend_statement`) are
-  already frozen, so the swap is localized.
+  already frozen, so the swap is localized. A **real Plonky3 STARK proving
+  benchmark now exists** (`bench/circuit-bench`, [`docs/gate-a-findings.md`](gate-a-findings.md)):
+  it proves/verifies real BabyBear+Poseidon2 proofs and produced measured Gate-A
+  data. Key finding: **proof size + aggregation is the binding constraint** (a wide
+  proxy AIR gives ~1.6 MB proofs vs. the 250 KB target), sharpening the risk from
+  "can we prove?" to "narrow Poseidon2 circuit + size-tuned FRI + recursion".
 - **Async DAG-BFT integration (WP11/WP12)** — the *consensus contract* (a
   committed total order → identical state on every replica) is implemented and
   adversarially tested in `consensus` against the Gate-C criteria. What remains

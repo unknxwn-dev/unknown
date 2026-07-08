@@ -1,5 +1,6 @@
 [workspace]
 resolver = "2"
+exclude = ["bench/circuit-bench"]
 members = [
     "crates/interfaces",
     "crates/primitives",

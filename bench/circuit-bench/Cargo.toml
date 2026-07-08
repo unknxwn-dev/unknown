@@ -1,0 +1,28 @@
+[package]
+name = "circuit-bench"
+version = "0.0.1"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+
+# Standalone (excluded from the main workspace) so Plonky3's large dependency
+# tree does not slow the core CI build. Run with: cargo run --release.
+
+[dependencies]
+p3-baby-bear = "=0.6.1"
+p3-keccak-air = "=0.6.1"
+p3-uni-stark = "=0.6.1"
+p3-field = "=0.6.1"
+p3-commit = "=0.6.1"
+p3-fri = "=0.6.1"
+p3-merkle-tree = "=0.6.1"
+p3-symmetric = "=0.6.1"
+p3-challenger = "=0.6.1"
+p3-dft = "=0.6.1"
+rand = "0.10"
+postcard = { version = "1", features = ["alloc"] }
+
+[profile.release]
+opt-level = 3
+
+[workspace]
