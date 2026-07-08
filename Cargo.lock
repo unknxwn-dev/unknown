@@ -1004,6 +1004,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "unknown-antispam-pow",
+ "unknown-antispam-quota",
  "unknown-emission",
  "unknown-encryption",
  "unknown-interfaces",
@@ -1052,6 +1053,7 @@ version = "0.0.1"
 dependencies = [
  "thiserror",
  "unknown-antispam-pow",
+ "unknown-antispam-quota",
  "unknown-encryption",
  "unknown-interfaces",
  "unknown-primitives",

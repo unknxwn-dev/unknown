@@ -166,7 +166,7 @@ mod tests {
             nullifiers,
             commitments,
             enc_outputs: [enc.clone(), enc],
-            pow: PowSolution { nonce: 0 },
+            antispam: unknown_tx::AntiSpam::Pow(PowSolution { nonce: 0 }),
             proof: vec![0u8; PROOF_BUCKET],
         };
         let pi = SpendPublicInputs {
@@ -179,7 +179,7 @@ mod tests {
         let mut proof = hash_parts(ds::DEV_PROOF, &[&pi.encode()]).to_vec();
         proof.resize(PROOF_BUCKET, 0);
         tx.proof = proof;
-        tx.pow = solve(&tx.binding_digest(), 0);
+        tx.antispam = unknown_tx::AntiSpam::Pow(solve(&tx.binding_digest(), 0));
         tx
     }
 

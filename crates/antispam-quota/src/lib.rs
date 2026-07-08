@@ -114,27 +114,60 @@ impl QuotaNote {
                 quota: self.quota(),
             });
         }
-        let x = field_from("unknown.v0.quota.x", &[message]);
+        let x = message_x(message);
         let y = field::add(self.secret(), field::mul(self.slope(epoch), x));
         Ok(RateProof {
             epoch,
             rate_nullifier: self.rate_nullifier(epoch, k),
             x,
             y,
-            quota_commitment: self.commitment(),
         })
     }
 }
 
+/// The Shamir x-coordinate a rate proof must use for a given message (the tx
+/// binding digest). A verifier recomputes this to bind the share to the tx.
+pub fn message_x(message: &[u8]) -> u64 {
+    field_from("unknown.v0.quota.x", &[message])
+}
+
+/// Serialized length of a [`RateProof`] on the wire.
+pub const RATE_PROOF_LEN: usize = 8 + 32 + 8 + 8; // 56
+
 /// The per-transaction anti-spam artifact for the quota lane.
+///
+/// NOTE: the quota note's commitment is deliberately NOT carried here. Putting
+/// it on the wire would link every transaction from the same staker within an
+/// epoch. In production a zero-knowledge proof attests that `rate_nullifier`
+/// derives from *some* sufficiently-staked quota note in the pool without
+/// revealing which — preserving unlinkability. The rate nullifier changes each
+/// epoch and per slot, so it leaks only the slot count, never identity.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RateProof {
     pub epoch: u64,
     pub rate_nullifier: [u8; 32],
     pub x: u64,
     pub y: u64,
-    /// Which quota note this attests to (in production, proven in ZK).
-    pub quota_commitment: [u8; 32],
+}
+
+impl RateProof {
+    pub fn to_bytes(&self) -> [u8; RATE_PROOF_LEN] {
+        let mut b = [0u8; RATE_PROOF_LEN];
+        b[0..8].copy_from_slice(&self.epoch.to_le_bytes());
+        b[8..40].copy_from_slice(&self.rate_nullifier);
+        b[40..48].copy_from_slice(&self.x.to_le_bytes());
+        b[48..56].copy_from_slice(&self.y.to_le_bytes());
+        b
+    }
+
+    pub fn from_bytes(b: &[u8; RATE_PROOF_LEN]) -> Self {
+        Self {
+            epoch: u64::from_le_bytes(b[0..8].try_into().unwrap()),
+            rate_nullifier: b[8..40].try_into().unwrap(),
+            x: u64::from_le_bytes(b[40..48].try_into().unwrap()),
+            y: u64::from_le_bytes(b[48..56].try_into().unwrap()),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]

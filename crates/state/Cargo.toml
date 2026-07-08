@@ -13,6 +13,7 @@ unknown-tree.workspace = true
 unknown-tx.workspace = true
 unknown-emission.workspace = true
 unknown-storage.workspace = true
+unknown-antispam-quota.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]

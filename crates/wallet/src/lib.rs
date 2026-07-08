@@ -13,7 +13,7 @@ use unknown_interfaces::{Anchor, MerklePath, Nullifier, TX_INPUTS, TX_OUTPUTS};
 use unknown_keys::{Address, SpendingKey};
 use unknown_notes::{rho_transfer, Note, MEMO_LEN};
 use unknown_prover_dev::{prove, InputWitness, SpendWitness};
-use unknown_tx::TxV1;
+use unknown_tx::{AntiSpam, TxV1};
 
 #[derive(Clone, Debug)]
 pub struct NoteRecord {
@@ -192,7 +192,7 @@ impl Wallet {
             nullifiers: sorted_nfs,
             commitments,
             enc_outputs: [enc0.clone(), enc1.clone()],
-            pow: PowSolution { nonce: 0 },
+            antispam: AntiSpam::Pow(PowSolution { nonce: 0 }),
             proof: vec![0u8; unknown_interfaces::PROOF_BUCKET],
         };
         let binding = partial.binding_digest();
@@ -215,7 +215,7 @@ impl Wallet {
             nullifiers: sorted_nfs,
             commitments,
             enc_outputs: [enc0, enc1],
-            pow,
+            antispam: AntiSpam::Pow(pow),
             proof,
         })
     }

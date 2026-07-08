@@ -8,11 +8,16 @@
 //! state root (consensus safety depends on this).
 
 use std::collections::HashSet;
+use unknown_antispam_quota::{Admit, QuotaRegistry};
 use unknown_emission::{reward_descriptor, EmissionParams, RewardDescriptor};
 use unknown_interfaces::{Anchor, Commitment, Nullifier, SpendVerifier};
 use unknown_notes::{rho_mint, Note};
 use unknown_tree::CommitmentTree;
-use unknown_tx::{validate_stateless, TxV1};
+use unknown_tx::{validate_stateless, AntiSpam, TxV1};
+
+/// Checkpoints per quota epoch (specs/emission.md §7.2). Rate nullifiers reset
+/// each epoch, so a quota grants `quota(stake)` transactions per `EPOCH_LENGTH`.
+pub const EPOCH_LENGTH: u64 = 100;
 
 #[derive(Clone, Debug)]
 pub struct ValidatorInfo {
@@ -26,6 +31,8 @@ pub enum RejectReason {
     StaleOrUnknownAnchor,
     DoubleSpend,
     StatelessInvalid,
+    /// Quota lane: wrong epoch, over quota, or a slot reused (slashable).
+    QuotaRejected,
 }
 
 #[derive(Debug)]
@@ -45,6 +52,7 @@ pub struct CheckpointSummary {
 pub struct Ledger {
     tree: CommitmentTree,
     nullifiers: HashSet<Nullifier>,
+    quota: QuotaRegistry,
     height: u64,
     supply: u64,
     emission: EmissionParams,
@@ -72,6 +80,7 @@ impl Ledger {
         Self {
             tree,
             nullifiers: HashSet::new(),
+            quota: QuotaRegistry::new(),
             height: 0,
             supply,
             emission,
@@ -128,6 +137,18 @@ impl Ledger {
             if conflict {
                 rejected.push((i, RejectReason::DoubleSpend));
                 continue;
+            }
+            // Quota lane (stateful): the rate proof must be for this epoch and
+            // its slot fresh. A reused slot is a duplicate/double-signal — the
+            // registry recovers the staker's secret (slashable) and the tx is
+            // rejected. The PoW lane is checked statelessly above.
+            if let AntiSpam::Quota(rp) = &tx.antispam {
+                if rp.epoch != next_height / EPOCH_LENGTH
+                    || !matches!(self.quota.admit(rp), Admit::Ok)
+                {
+                    rejected.push((i, RejectReason::QuotaRejected));
+                    continue;
+                }
             }
             for nf in &tx.nullifiers {
                 seen_this_checkpoint.insert(*nf);
@@ -227,15 +248,25 @@ impl Ledger {
         let supply = store.meta("supply")?.unwrap_or(0);
         tree.seal(height);
         let nullifiers: HashSet<Nullifier> = store.load_nullifiers()?.into_iter().collect();
+        // The quota registry is per-epoch soft state, not persisted in v0: a
+        // restart resets rate-limits, which is safe because epochs roll over
+        // and the registry only ever *rejects* (never admits invalid spends).
         Ok(Self {
             tree,
             nullifiers,
+            quota: QuotaRegistry::new(),
             height,
             supply,
             emission,
             validators,
             difficulty_bits,
         })
+    }
+
+    /// The current quota epoch (specs/emission.md §7.2). Wallets sign quota
+    /// rate proofs for this epoch.
+    pub fn current_epoch(&self) -> u64 {
+        self.height / EPOCH_LENGTH
     }
 }
 
@@ -273,7 +304,7 @@ mod tests {
             nullifiers,
             commitments,
             enc_outputs: [enc.clone(), enc],
-            pow: unknown_antispam_pow::PowSolution { nonce: 0 },
+            antispam: unknown_tx::AntiSpam::Pow(unknown_antispam_pow::PowSolution { nonce: 0 }),
             proof: vec![0u8; PROOF_BUCKET],
         };
         // Forge the dev tag over the real public inputs (dev prover is not
@@ -288,8 +319,86 @@ mod tests {
         let mut proof = hash_parts(ds::DEV_PROOF, &[&pi.encode()]).to_vec();
         proof.resize(PROOF_BUCKET, 0);
         tx.proof = proof;
-        tx.pow = solve(&tx.binding_digest(), 0);
+        tx.antispam = unknown_tx::AntiSpam::Pow(solve(&tx.binding_digest(), 0));
         tx
+    }
+
+    /// Like `dev_tx` but the anti-spam lane is a quota rate proof from `qn`
+    /// for (epoch, slot), bound to the tx binding digest.
+    fn quota_tx(
+        anchor: Anchor,
+        nf_a: u8,
+        nf_b: u8,
+        qn: &unknown_antispam_quota::QuotaNote,
+        epoch: u64,
+        slot: u64,
+    ) -> TxV1 {
+        use unknown_interfaces::{Commitment, Nullifier, SpendPublicInputs};
+        use unknown_primitives::{ds, hash_parts};
+        let enc = EncryptedOutput {
+            bytes: vec![0u8; ENC_OUTPUT_LEN],
+        };
+        let nullifiers = [Nullifier([nf_a; 32]), Nullifier([nf_b; 32])];
+        let commitments = [Commitment([20; 32]), Commitment([21; 32])];
+        let mut tx = TxV1 {
+            anchor,
+            nullifiers,
+            commitments,
+            enc_outputs: [enc.clone(), enc],
+            antispam: unknown_tx::AntiSpam::Pow(unknown_antispam_pow::PowSolution { nonce: 0 }),
+            proof: vec![0u8; PROOF_BUCKET],
+        };
+        let binding = tx.binding_digest();
+        let rp = qn.signal(epoch, slot, &binding).expect("within quota");
+        tx.antispam = unknown_tx::AntiSpam::Quota(rp);
+        let pi = SpendPublicInputs {
+            anchor,
+            nullifiers: nullifiers.to_vec(),
+            commitments: commitments.to_vec(),
+            binding_digest: binding,
+            mint_value: 0,
+        };
+        let mut proof = hash_parts(ds::DEV_PROOF, &[&pi.encode()]).to_vec();
+        proof.resize(PROOF_BUCKET, 0);
+        tx.proof = proof;
+        tx
+    }
+
+    #[test]
+    fn quota_lane_admits_then_rejects_slot_reuse() {
+        use unknown_antispam_quota::QuotaNote;
+        let mut led = Ledger::genesis(params(), validators(), 0, &[(Commitment([1; 32]), 5_000)]);
+        let qn = QuotaNote {
+            stake: 5_000,
+            quota_key: [77u8; 32],
+        };
+        let e = led.current_epoch();
+        let a = led.current_anchor();
+        // A quota-lane tx using slot 0 is admitted.
+        let s = led.apply_checkpoint(&[quota_tx(a, 1, 2, &qn, e, 0)], &DevVerifier);
+        assert_eq!(s.accepted, 1);
+        // Reusing slot 0 in the same epoch for a different tx is rejected
+        // (the registry recovers the secret — slashable).
+        let e2 = led.current_epoch();
+        let a2 = led.current_anchor();
+        let s2 = led.apply_checkpoint(&[quota_tx(a2, 3, 4, &qn, e2, 0)], &DevVerifier);
+        assert_eq!(s2.accepted, 0);
+        assert!(matches!(s2.rejected[0].1, RejectReason::QuotaRejected));
+    }
+
+    #[test]
+    fn quota_wrong_epoch_rejected() {
+        use unknown_antispam_quota::QuotaNote;
+        let mut led = Ledger::genesis(params(), validators(), 0, &[(Commitment([1; 32]), 5_000)]);
+        let qn = QuotaNote {
+            stake: 5_000,
+            quota_key: [88u8; 32],
+        };
+        let a = led.current_anchor();
+        // A rate proof signed for a far-future epoch cannot ride in this checkpoint.
+        let s = led.apply_checkpoint(&[quota_tx(a, 5, 6, &qn, 999, 0)], &DevVerifier);
+        assert_eq!(s.accepted, 0);
+        assert!(matches!(s.rejected[0].1, RejectReason::QuotaRejected));
     }
 
     #[test]

@@ -10,6 +10,7 @@ unknown-interfaces.workspace = true
 unknown-primitives.workspace = true
 unknown-encryption.workspace = true
 unknown-antispam-pow.workspace = true
+unknown-antispam-quota.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
