@@ -1,0 +1,17 @@
+[package]
+name = "unknown-sim"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "unknown-sim"
+path = "src/main.rs"
+
+[dependencies]
+unknown-emission.workspace = true
+unknown-antispam-pow.workspace = true
+unknown-primitives.workspace = true
+
+[lints]
+workspace = true

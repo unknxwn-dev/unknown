@@ -26,6 +26,8 @@ jobs:
         run: cargo test --all
       - name: Devnet demo (lifecycle smoke test)
         run: cargo run --bin unknown-devnet
+      - name: Economics simulation (smoke test)
+        run: cargo run --bin unknown-sim
 
   deny:
     runs-on: ubuntu-latest

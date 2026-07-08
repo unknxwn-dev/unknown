@@ -862,6 +862,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "unknown-consensus"
+version = "0.0.1"
+dependencies = [
+ "unknown-antispam-pow",
+ "unknown-emission",
+ "unknown-encryption",
+ "unknown-interfaces",
+ "unknown-notes",
+ "unknown-primitives",
+ "unknown-prover-dev",
+ "unknown-state",
+ "unknown-tx",
+]
+
+[[package]]
 name = "unknown-emission"
 version = "0.0.1"
 
@@ -896,6 +911,18 @@ dependencies = [
  "unknown-primitives",
  "x25519-dalek",
  "zeroize",
+]
+
+[[package]]
+name = "unknown-knockout"
+version = "0.0.1"
+dependencies = [
+ "unknown-interfaces",
+ "unknown-keys",
+ "unknown-notes",
+ "unknown-primitives",
+ "unknown-prover-dev",
+ "unknown-tree",
 ]
 
 [[package]]
@@ -942,6 +969,15 @@ dependencies = [
  "unknown-notes",
  "unknown-primitives",
  "unknown-tree",
+]
+
+[[package]]
+name = "unknown-sim"
+version = "0.0.1"
+dependencies = [
+ "unknown-antispam-pow",
+ "unknown-emission",
+ "unknown-primitives",
 ]
 
 [[package]]

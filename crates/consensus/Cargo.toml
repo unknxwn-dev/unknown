@@ -1,0 +1,21 @@
+[package]
+name = "unknown-consensus"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+unknown-interfaces.workspace = true
+unknown-primitives.workspace = true
+unknown-tx.workspace = true
+unknown-state.workspace = true
+unknown-emission.workspace = true
+
+[dev-dependencies]
+unknown-antispam-pow.workspace = true
+unknown-encryption.workspace = true
+unknown-prover-dev.workspace = true
+unknown-notes.workspace = true
+
+[lints]
+workspace = true

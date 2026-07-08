@@ -11,9 +11,12 @@ members = [
     "crates/emission",
     "crates/tx",
     "crates/prover-dev",
+    "crates/knockout",
     "crates/state",
+    "crates/consensus",
     "crates/wallet",
     "crates/node",
+    "crates/sim",
 ]
 
 [workspace.package]
@@ -32,7 +35,9 @@ unknown-antispam-pow = { path = "crates/antispam-pow" }
 unknown-emission = { path = "crates/emission" }
 unknown-tx = { path = "crates/tx" }
 unknown-prover-dev = { path = "crates/prover-dev" }
+unknown-knockout = { path = "crates/knockout" }
 unknown-state = { path = "crates/state" }
+unknown-consensus = { path = "crates/consensus" }
 unknown-wallet = { path = "crates/wallet" }
 
 blake3 = "1.8"

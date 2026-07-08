@@ -11,13 +11,15 @@ cryptocurrency that combines:
 
 ## Status
 
-**Phase 1 prototype runs.** A complete shielded-payment pipeline over a single
-sequencer is implemented in Rust under `crates/`, with 44 passing tests and an
-end-to-end devnet demo:
+**Phase 1 + consensus core run.** A shielded-payment pipeline over a single
+sequencer, a deterministic BFT-DAG consensus core with adversarial double-spend
+tests, and an anti-counterfeiting mutation harness are implemented in Rust under
+`crates/` — 52 passing tests, plus a devnet demo and an economics simulator:
 
 ```sh
-cargo test --all                  # all green
+cargo test --all                  # all green (52 tests)
 cargo run --bin unknown-devnet    # genesis → private transfer → chained spend
+cargo run --bin unknown-sim       # spam / emission / mint-farming analysis
 ```
 
 See [`docs/implementation-status.md`](docs/implementation-status.md) for the
@@ -39,5 +41,7 @@ Start here:
   circuit statement, 18 work packages with acceptance tests, and milestone→gate mapping.
 - [`specs/emission.md`](specs/emission.md) — issuance schedule, reward distribution, and the
   emission governance model (decrease-easy / increase-hard, zero-emission as earned end state).
+- [`specs/anchors.md`](specs/anchors.md) — normative anchor spec: how shielded membership proofs
+  are anchored on a concurrent deterministic-finality ledger (the design's central seam).
 - [`docs/implementation-status.md`](docs/implementation-status.md) — what the `crates/` prototype
   builds today, mapped to engineering-plan work packages.

@@ -5,12 +5,14 @@ work packages in [`engineering-plan.md`](engineering-plan.md).*
 
 ## What runs today
 
-A complete **shielded-payment pipeline over a single sequencer** (engineering
-plan Phase 1) compiles, is tested, and runs end to end:
+A complete **shielded-payment pipeline over a single sequencer** (Phase 1) plus
+the **deterministic BFT-DAG consensus core** (Phase 2, WP11) and the
+**anti-counterfeiting knockout harness** (WP6d) compile, are tested, and run:
 
 ```
-cargo test --all          # 44 tests, all passing
-cargo run --bin unknown-devnet   # full lifecycle demo
+cargo test --all                 # 52 tests, all passing
+cargo run --bin unknown-devnet   # full private-payment lifecycle demo
+cargo run --bin unknown-sim      # economics / spam / emission analysis (WP17)
 cargo clippy --all-targets       # clean (warnings denied)
 ```
 
@@ -32,12 +34,15 @@ recipients exist only inside the wallets, and the public supply audit
 | `tree` | WP4 | ✅ (in-memory) | Append-only depth-32 Merkle tree, anchors + validity window, proptests. RocksDB backend pending |
 | `encryption` | WP5 | ✅ | 1273-byte hybrid ciphertexts, trial decryption + batch scan, tamper tests |
 | `prover-dev` | WP6 | ⚠ dev stand-in | Native spend-statement checker (C1–C9) = executable circuit spec. **STARK prover is the next major piece**; `check_spend_statement` is what it must enforce |
+| `knockout` | WP6d | ✅ | Mutation harness: 13 targeted violations of C1–C8, each asserted caught — the invisible-inflation tripwire (incl. the C7 balance/inflation check) |
 | `tx` | WP9 | ✅ | `TxV1` fixed-layout codec, binding digest, malleability + uniformity tests, stateless validation |
 | `state` | WP10 | ✅ (in-memory) | Checkpoint state machine, nullifier set, reward minting, supply audit, deterministic-replay test |
+| `consensus` | WP11 | ✅ (model) | Deterministic BFT-DAG ordering model + Gate-C adversarial tests: replica agreement, order-independence, single-winner double-spend, cross-round replay rejection, partition-heal, byzantine-drop. Async AlephBFT/libp2p integration still to come |
 | `emission` | WP15 | ✅ | Float-free `E(h)` decay-to-tail schedule, weight-proportional distribution, β=0 |
 | `antispam-pow` | WP16a | ✅ (hashcash) | Uniform-difficulty PoW with the EquiX solve/verify interface |
 | `wallet` | WP14 | ✅ | Note management, input selection, transfer builder, scan, spend-marking |
 | `node` | WP13 | ✅ (demo) | Integrated single-sequencer devnet binary + lifecycle test |
+| `sim` | WP17 | ✅ | Off-chain economics: PoW spam squeeze, emission/inflation/validator-revenue calibration, mint-farming check |
 
 ## Deliberately not yet built (and why)
 
@@ -48,9 +53,11 @@ These are sequenced behind gates in the engineering plan, not overlooked:
   Gate-A work and the single largest remaining task. The interface
   (`SpendVerifier`) and the constraint spec (`check_spend_statement`) are
   already frozen, so the swap is localized.
-- **DAG-BFT consensus (WP11)** — the state machine already consumes a *total
-  order* of transactions, which is exactly what AlephBFT/Mysticeti produce. The
-  single sequencer is a stand-in for that ordering service.
+- **Async DAG-BFT integration (WP11/WP12)** — the *consensus contract* (a
+  committed total order → identical state on every replica) is implemented and
+  adversarially tested in `consensus` against the Gate-C criteria. What remains
+  is wiring a real AlephBFT/Mysticeti instance over libp2p to produce that order
+  across networked nodes; the ledger side is done.
 - **Persistence (RocksDB), P2P (libp2p), gRPC (tonic)** — WP10/12/13 backends;
   the logic they wrap is implemented and tested in-memory behind the same shapes.
 - **Quota anti-spam (WP16b), proof aggregation, FMD scanning** — Phase 3 / scale.
