@@ -67,6 +67,19 @@ impl CommitmentTree {
         pos
     }
 
+    /// Raw leaves in position order (for persistence).
+    pub fn leaves(&self) -> &[[u8; 32]] {
+        &self.leaves
+    }
+
+    /// Rebuild a tree from persisted raw leaves (position order). The root is
+    /// deterministic in the leaves, so a rebuilt tree matches the original.
+    pub fn from_raw_leaves(leaves: &[[u8; 32]]) -> Self {
+        let mut t = Self::new();
+        t.leaves = leaves.to_vec();
+        t
+    }
+
     /// Root over the current leaf set (capacity 2^32, empty slots padded).
     pub fn root(&self) -> [u8; 32] {
         if self.leaves.is_empty() {

@@ -36,7 +36,8 @@ recipients exist only inside the wallets, and the public supply audit
 | `prover-dev` | WP6 | ⚠ dev stand-in | Native spend-statement checker (C1–C9) = executable circuit spec. **STARK prover is the next major piece**; `check_spend_statement` is what it must enforce |
 | `knockout` | WP6d | ✅ | Mutation harness: 13 targeted violations of C1–C8, each asserted caught — the invisible-inflation tripwire (incl. the C7 balance/inflation check) |
 | `tx` | WP9 | ✅ | `TxV1` fixed-layout codec, binding digest, malleability + uniformity tests, stateless validation |
-| `state` | WP10 | ✅ (in-memory) | Checkpoint state machine, nullifier set, reward minting, supply audit, deterministic-replay test |
+| `state` | WP10 | ✅ | Checkpoint state machine, nullifier set, reward minting, supply audit, deterministic-replay, **persist/restore** (durable across restart) |
+| `storage` | WP10 | ✅ | redb-backed durable nullifier set + tree leaves + meta; crash-safe atomic checkpoints; rebuild-tree-from-leaves verified root-identical |
 | `consensus` | WP11 | ✅ (model) | Deterministic BFT-DAG ordering model + Gate-C adversarial tests: replica agreement, order-independence, single-winner double-spend, cross-round replay rejection, partition-heal, byzantine-drop. Async AlephBFT/libp2p integration still to come |
 | `emission` | WP15 | ✅ | Float-free `E(h)` decay-to-tail schedule, weight-proportional distribution, β=0 |
 | `antispam-pow` | WP16a | ✅ (hashcash) | Uniform-difficulty PoW with the EquiX solve/verify interface |
@@ -65,8 +66,10 @@ These are sequenced behind gates in the engineering plan, not overlooked:
   adversarially tested in `consensus` against the Gate-C criteria. What remains
   is wiring a real AlephBFT/Mysticeti instance over libp2p to produce that order
   across networked nodes; the ledger side is done.
-- **Persistence (RocksDB), P2P (libp2p), gRPC (tonic)** — WP10/12/13 backends;
-  the logic they wrap is implemented and tested in-memory behind the same shapes.
+- **P2P (libp2p), gRPC (tonic)** — WP12/13 network backends; the logic they wrap
+  is implemented and tested behind the same shapes. (Persistence is now done: the
+  `storage` crate + `Ledger::persist`/`restore` give durable, crash-safe state; a
+  RocksDB backend remains an option if redb's write throughput becomes a limit.)
 - **Quota-lane wire integration** — the RLN quota core (`antispam-quota`) is
   implemented and tested; what remains is carrying its rate proof in `TxV1`
   (a second anti-spam tag) and enforcing it in the state machine with a

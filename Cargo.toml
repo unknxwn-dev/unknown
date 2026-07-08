@@ -16,6 +16,7 @@ members = [
     "crates/knockout",
     "crates/state",
     "crates/consensus",
+    "crates/storage",
     "crates/wallet",
     "crates/node",
     "crates/sim",
@@ -43,6 +44,7 @@ unknown-prover-dev = { path = "crates/prover-dev" }
 unknown-knockout = { path = "crates/knockout" }
 unknown-state = { path = "crates/state" }
 unknown-consensus = { path = "crates/consensus" }
+unknown-storage = { path = "crates/storage" }
 unknown-wallet = { path = "crates/wallet" }
 unknown-testkit = { path = "crates/testkit" }
 
@@ -57,6 +59,8 @@ rand_chacha = "0.9"
 thiserror = "2"
 hex = "0.4"
 proptest = "1"
+redb = "4"
+tempfile = "3"
 
 [workspace.lints.rust]
 unsafe_code = "deny"

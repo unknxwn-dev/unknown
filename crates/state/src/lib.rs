@@ -192,6 +192,51 @@ impl Ledger {
     pub fn anchor_valid(&self, anchor: &Anchor) -> bool {
         self.tree.anchor_valid(anchor)
     }
+
+    /// Persist the full permanent state (leaves + nullifiers + height + supply)
+    /// as a crash-safe snapshot (WP10 durability). Production would persist
+    /// per-checkpoint deltas; this snapshot is O(state) but simple and correct.
+    pub fn persist(
+        &self,
+        store: &unknown_storage::Store,
+    ) -> Result<(), unknown_storage::StoreError> {
+        let leaves: Vec<(u64, Commitment)> = self
+            .tree
+            .leaves()
+            .iter()
+            .enumerate()
+            .map(|(i, l)| (i as u64, Commitment(*l)))
+            .collect();
+        let nullifiers: Vec<Nullifier> = self.nullifiers.iter().copied().collect();
+        store.commit_checkpoint(self.height, self.supply, &leaves, &nullifiers)
+    }
+
+    /// Rebuild a ledger from a persisted store after a restart. The commitment
+    /// tree is rebuilt from leaves (root is deterministic in the leaves), the
+    /// nullifier set reloaded, and the current anchor re-sealed so notes are
+    /// immediately spendable-against. Anchor-window history beyond the current
+    /// height is rebuilt going forward as new checkpoints seal.
+    pub fn restore(
+        store: &unknown_storage::Store,
+        emission: EmissionParams,
+        validators: Vec<ValidatorInfo>,
+        difficulty_bits: u32,
+    ) -> Result<Self, unknown_storage::StoreError> {
+        let mut tree = store.load_tree()?;
+        let height = store.meta("height")?.unwrap_or(0);
+        let supply = store.meta("supply")?.unwrap_or(0);
+        tree.seal(height);
+        let nullifiers: HashSet<Nullifier> = store.load_nullifiers()?.into_iter().collect();
+        Ok(Self {
+            tree,
+            nullifiers,
+            height,
+            supply,
+            emission,
+            validators,
+            difficulty_bits,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -293,6 +338,47 @@ mod tests {
             summary.rejected,
             vec![(0, RejectReason::StaleOrUnknownAnchor)]
         );
+    }
+
+    #[test]
+    fn persist_and_restore_roundtrips() {
+        use unknown_storage::Store;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ledger.redb");
+
+        let mut led = Ledger::genesis(params(), validators(), 0, &[(Commitment([1; 32]), 5_000)]);
+        let a = led.current_anchor();
+        led.apply_checkpoint(&[dev_tx(a, 1, 2)], &DevVerifier);
+        let a2 = led.current_anchor();
+        led.apply_checkpoint(&[dev_tx(a2, 3, 4)], &DevVerifier);
+        let (root, height, supply) = (led.current_anchor().root, led.height(), led.total_supply());
+
+        {
+            let store = Store::open(&path).unwrap();
+            led.persist(&store).unwrap();
+        }
+
+        // New process would call restore(); simulate by reopening.
+        let store = Store::open(&path).unwrap();
+        let restored = Ledger::restore(&store, params(), validators(), 0).unwrap();
+        assert_eq!(restored.height(), height);
+        assert_eq!(restored.total_supply(), supply);
+        assert_eq!(
+            restored.current_anchor().root,
+            root,
+            "restored root must match original"
+        );
+        assert!(restored.nullifier_seen(&Nullifier([1; 32])));
+        assert!(restored.nullifier_seen(&Nullifier([3; 32])));
+        assert!(!restored.nullifier_seen(&Nullifier([9; 32])));
+
+        // And the restored ledger continues consistently: a replayed nullifier
+        // is still rejected as a double-spend.
+        let mut restored = restored;
+        let a3 = restored.current_anchor();
+        let summary = restored.apply_checkpoint(&[dev_tx(a3, 1, 2)], &DevVerifier);
+        assert_eq!(summary.accepted, 0);
+        assert!(matches!(summary.rejected[0].1, RejectReason::DoubleSpend));
     }
 
     #[test]

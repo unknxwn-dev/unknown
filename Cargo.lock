@@ -656,6 +656,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "redb"
+version = "4.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e925444704b5f17d32bf42f5b6e2df050bceebc3dcd6e71cc73dafe8092e839"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "regex-syntax"
 version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -992,6 +1001,7 @@ dependencies = [
 name = "unknown-state"
 version = "0.0.1"
 dependencies = [
+ "tempfile",
  "thiserror",
  "unknown-antispam-pow",
  "unknown-emission",
@@ -1000,8 +1010,20 @@ dependencies = [
  "unknown-notes",
  "unknown-primitives",
  "unknown-prover-dev",
+ "unknown-storage",
  "unknown-tree",
  "unknown-tx",
+]
+
+[[package]]
+name = "unknown-storage"
+version = "0.0.1"
+dependencies = [
+ "redb",
+ "tempfile",
+ "thiserror",
+ "unknown-interfaces",
+ "unknown-tree",
 ]
 
 [[package]]

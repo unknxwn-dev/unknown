@@ -12,12 +12,14 @@ unknown-notes.workspace = true
 unknown-tree.workspace = true
 unknown-tx.workspace = true
 unknown-emission.workspace = true
+unknown-storage.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
 unknown-antispam-pow.workspace = true
 unknown-encryption.workspace = true
 unknown-prover-dev.workspace = true
+tempfile.workspace = true
 
 [lints]
 workspace = true

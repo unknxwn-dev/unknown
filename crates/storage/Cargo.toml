@@ -1,0 +1,18 @@
+[package]
+name = "unknown-storage"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+unknown-interfaces.workspace = true
+unknown-tree.workspace = true
+redb.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true
