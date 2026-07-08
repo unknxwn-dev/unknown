@@ -1,2 +1,6 @@
+# Pinned so local development and CI use the exact same toolchain — floating
+# "stable" drifts and breaks `-D warnings` when new clippy lints land (as it
+# did on 1.96.0). Bump this deliberately, run `cargo clippy`/`fmt`, then push.
 [toolchain]
-channel = "stable"
+channel = "1.96.0"
+components = ["clippy", "rustfmt"]

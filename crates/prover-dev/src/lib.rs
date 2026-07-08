@@ -45,8 +45,7 @@ pub struct SpendWitness {
 /// before [`public_inputs`] / [`prove`]; both assume the canonical order.
 pub fn canonicalize(w: &mut SpendWitness) {
     let nk = w.spender_nk;
-    w.inputs
-        .sort_by(|a, b| a.note.nullifier(&nk).0.cmp(&b.note.nullifier(&nk).0));
+    w.inputs.sort_by_key(|i| i.note.nullifier(&nk).0);
 }
 
 /// Derive the public inputs a witness commits to (nullifiers, commitments).

@@ -156,7 +156,7 @@ impl Wallet {
         // The output rho derives from the smallest input nullifier (canonical
         // order, matching prover canonicalization).
         let mut nfs: Vec<Nullifier> = inputs.iter().map(|i| i.note.nullifier(&nk)).collect();
-        nfs.sort_by(|a, b| a.0.cmp(&b.0));
+        nfs.sort_by_key(|nf| nf.0);
         let first_nf = nfs[0];
 
         let memo = [0u8; MEMO_LEN];

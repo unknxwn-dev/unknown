@@ -65,7 +65,7 @@ fn baseline() -> (SpendWitness, SpendPublicInputs, Anchor) {
     ];
 
     let mut nfs: Vec<_> = inputs.iter().map(|i| i.note.nullifier(&nk)).collect();
-    nfs.sort_by(|a, b| a.0.cmp(&b.0));
+    nfs.sort_by_key(|nf| nf.0);
     let first_nf = nfs[0];
 
     let recipient_tag = SpendingKey::from_seed(&[2u8; 32]).addr_tag();
