@@ -35,6 +35,9 @@ Start here:
   rules, feeless spam economics, risk ranking, MVP plan, and open research questions.
 - [`docs/plan.md`](docs/plan.md) — phased project plan: gates with numeric go/no-go criteria,
   workstreams, KPIs, team shape, risk-to-gate mapping, and immediate next actions.
+- [`docs/mainnet-roadmap.md`](docs/mainnet-roadmap.md) — the path from prototype to production
+  launch: launch-blocking gaps ranked by risk, nine workstreams with exit criteria, the
+  milestone timeline, the go/no-go launch gate, and the next-90-days list.
 - [`docs/engineering-plan.md`](docs/engineering-plan.md) — agent-ready work breakdown: which
   repositories provide base code and in what mode (dependency / embed / design-only), pinned
   technical decisions, workspace layout, frozen interface contracts, wire formats, the spend
